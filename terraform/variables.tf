@@ -9,3 +9,9 @@ variable "app" {
   description = "The name of the app"
   default     = "ListPal"
 }
+
+variable "domain_name" {
+  type        = string
+  description = "The root domain name of the api"
+  default     = "vinsp.in"
+}

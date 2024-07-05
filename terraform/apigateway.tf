@@ -11,10 +11,8 @@ module "api_gateway" {
     allow_origins = ["*"]
   }
 
-  create_domain_name = false
-
-  create_domain_records = true
-  create_certificate    = true
+  domain_name = "*.${var.domain_name}"
+  subdomains  = ["api"]
 
   stage_access_log_settings = {
     create_log_group            = true
