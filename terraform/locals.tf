@@ -1,19 +1,19 @@
 locals {
   lambda_routes = {
     all_tasks = {
-      route   = "GET /all-tasks"
+      route = "GET /all-tasks"
     },
     active_tasks = {
-      route   = "GET /active-tasks"
+      route = "GET /active-tasks"
     },
     expired_tasks = {
-      route   = "GET /expired-tasks"
+      route = "GET /expired-tasks"
     },
     task = {
-      route   = "GET /task"
+      route = "GET /task"
     },
     boards = {
-      route   = "GET /boards"
+      route = "GET /boards"
     }
   }
 
@@ -26,7 +26,7 @@ locals {
       }
     }
   }
-  
+
   tags = {
     Terraform   = "true"
     Environment = var.env
