@@ -8,3 +8,4 @@
 * https://github.com/terraform-aws-modules/terraform-aws-lambda/blob/master/examples/async/main.tf
 * https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#argument-reference
 * https://github.com/terraform-aws-modules/terraform-aws-apigateway-v2/blob/master/examples/complete-http/main.tf
+* https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.Visualizer.ImportCSV.html
