@@ -1,0 +1,158 @@
+{
+  "SK": "u#12345",
+  "EntityType": "User",
+  "PK": "u#12345",
+  "Email": "tom@example.com",
+  "Name": "Tom"
+}
+{
+  "SK": "u#23456",
+  "EntityType": "User",
+  "PK": "u#23456",
+  "Email": "adam@example.com",
+  "Name": "Adam"
+}
+{
+  "SK": "b#12345",
+  "EntityType": "Board",
+  "PK": "u#12345",
+  "Board": "My Lists"
+}
+{
+  "SK": "b#23456",
+  "EntityType": "Board",
+  "PK": "u#12345",
+  "Board": "Our Shared List"
+}
+{
+  "SK": "t#12345",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-10",
+  "Description": "Start reading that book I like",
+  "Category": "Personal",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-10",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#12346",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "nil",
+  "Description": "Increase pension contributions",
+  "Category": "Finance",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "nil"
+}
+{
+  "SK": "t#12347",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "nil",
+  "Description": "Set up regular 1:1s",
+  "Category": "Work",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "nil"
+}
+{
+  "SK": "t#12348",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-10",
+  "Description": "Clean the flat",
+  "Category": "Personal",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-10",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#12349",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-19",
+  "Description": "Update net worth spreadsheet",
+  "Category": "Finance",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-19",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#12350",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-19",
+  "Description": "Make mad money",
+  "Category": "Finance",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-19",
+  "GSI1-PK": "b#23456",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#12351",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-19",
+  "Description": "Don't lose mad money",
+  "Category": "Finance",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-19",
+  "GSI1-PK": "b#23456",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#12352",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-19",
+  "Description": "Clean the flat",
+  "Category": "Personal",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-19",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#23456",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "nil",
+  "Description": "Pick up package from Post Office",
+  "Category": "Personal",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "nil"
+}
+{
+  "SK": "t#34567",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "2024-06-10",
+  "Description": "Eat dinner",
+  "Category": "Personal",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "2024-06-10",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "2024-06-20"
+}
+{
+  "SK": "t#45678",
+  "EntityType": "Task",
+  "PK": "u#12345",
+  "ExpiryDate": "nil",
+  "Description": "Finnish that task that I hate",
+  "Category": "Work",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#12345",
+  "CompletedDate": "nil"
+}

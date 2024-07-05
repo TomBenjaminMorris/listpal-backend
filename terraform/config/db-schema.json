@@ -1,0 +1,517 @@
+{
+    "ModelName": "ListPal",
+    "ModelMetadata": {
+      "Author": "Thomas Morris",
+      "DateCreated": "Jun 19, 2024, 19:00 PM",
+      "DateLastModified": "Jun 19, 2024, 19:00 PM",
+      "Description": "A DynamoDB schema for a todo app",
+      "Version": "1.0"
+    },
+    "DataModel": [
+      {
+        "TableName": "ListPal",
+        "KeyAttributes": {
+          "PartitionKey": {
+            "AttributeName": "PK",
+            "AttributeType": "S"
+          },
+          "SortKey": {
+            "AttributeName": "SK",
+            "AttributeType": "S"
+          }
+        },
+        "NonKeyAttributes": [
+          {
+            "AttributeName": "EntityType",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "GSI1-PK",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "GSI1-SK",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Description",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "CreatedDate",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "CompletedDate",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "ExpiryDate",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Category",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Email",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Name",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Board",
+            "AttributeType": "S"
+          }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "GSI1",
+            "KeyAttributes": {
+              "PartitionKey": {
+                "AttributeName": "GSI1-PK",
+                "AttributeType": "S"
+              },
+              "SortKey": {
+                "AttributeName": "GSI1-SK",
+                "AttributeType": "S"
+              }
+            },
+            "Projection": {
+              "ProjectionType": "ALL"
+            }
+          }
+        ],
+        "TableData": [
+  
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "u#12345"
+            },
+            "EntityType": {
+              "S": "User"
+            },
+            "Email": {
+              "S": "tom@example.com"
+            },
+            "Name": {
+              "S": "Tom"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#23456"
+            },
+            "SK": {
+              "S": "u#23456"
+            },
+            "EntityType": {
+              "S": "User"
+            },
+            "Email": {
+              "S": "adam@example.com"
+            },
+            "Name": {
+              "S": "Adam"
+            }
+          },
+  
+  
+  
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12345"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Start reading that book I like"
+            },
+            "Category": {
+                "S": "Personal"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-10"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-10"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#23456"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Pick up package from Post Office"
+            },
+            "Category": {
+                "S": "Personal"
+            },
+            "ExpiryDate": {
+                "S": "nil"
+            },
+            "CompletedDate": {
+                "S": "nil"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "nil"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#34567"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Eat dinner"
+            },
+            "Category": {
+                "S": "Personal"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-10"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-10"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#45678"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Finnish that task that I hate"
+            },
+            "Category": {
+                "S": "Work"
+            },
+            "ExpiryDate": {
+                "S": "nil"
+            },
+            "CompletedDate": {
+                "S": "nil"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "nil"
+            }
+          },
+  
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12346"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Increase pension contributions"
+            },
+            "Category": {
+                "S": "Finance"
+            },
+            "ExpiryDate": {
+                "S": "nil"
+            },
+            "CompletedDate": {
+                "S": "nil"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "nil"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12347"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Set up regular 1:1s"
+            },
+            "Category": {
+                "S": "Work"
+            },
+            "ExpiryDate": {
+                "S": "nil"
+            },
+            "CompletedDate": {
+                "S": "nil"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "nil"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12348"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Clean the flat"
+            },
+            "Category": {
+                "S": "Personal"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-10"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-10"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12349"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Update net worth spreadsheet"
+            },
+            "Category": {
+                "S": "Finance"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-19"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-19"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12350"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Make mad money"
+            },
+            "Category": {
+                "S": "Finance"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-19"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#23456"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-19"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12351"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Don't lose mad money"
+            },
+            "Category": {
+                "S": "Finance"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-19"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#23456"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-19"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "t#12352"
+            },
+            "EntityType": {
+              "S": "Task"
+            },
+            "Description": {
+                "S": "Clean the flat"
+            },
+            "Category": {
+                "S": "Personal"
+            },
+            "ExpiryDate": {
+                "S": "2024-06-19"
+            },
+            "CompletedDate": {
+                "S": "2024-06-20"
+            },
+            "CreatedDate": {
+                "S": "2024-06-19"
+            },
+            "GSI1-PK": {
+                "S": "b#12345"
+            },
+            "GSI1-SK": {
+                "S": "2024-06-19"
+            }
+          },
+  
+  
+  
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "b#12345"
+            },
+            "EntityType": {
+              "S": "Board"
+            },
+            "Board": {
+                "S": "My Lists"
+            }
+          },
+          {
+            "PK": {
+              "S": "u#12345"
+            },
+            "SK": {
+              "S": "b#23456"
+            },
+            "EntityType": {
+              "S": "Board"
+            },
+            "Board": {
+                "S": "Our Shared List"
+            }
+          }
+        ],
+        "DataAccess": {
+          "MySql": {}
+        }
+      }
+    ]
+}
+    
