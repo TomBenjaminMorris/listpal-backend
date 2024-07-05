@@ -1,3 +1,5 @@
+// https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/dynamodb/command/QueryCommand/
+// https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/introduction/#nodejs-versions
 "use strict";
 const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
 const client = new DynamoDBClient();

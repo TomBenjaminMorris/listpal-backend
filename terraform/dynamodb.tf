@@ -1,9 +1,8 @@
-
 module "dynamodb_table" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.0.0"
 
-  name                        = "ListPal-${var.env}"
+  name                        = "${var.app}-${var.env}"
   hash_key                    = "PK"
   range_key                   = "SK"
   table_class                 = "STANDARD"
