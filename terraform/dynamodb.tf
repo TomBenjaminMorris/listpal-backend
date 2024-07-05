@@ -38,4 +38,3 @@ module "dynamodb_table" {
 
   tags = local.tags
 }
-

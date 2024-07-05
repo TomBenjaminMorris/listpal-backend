@@ -20,5 +20,5 @@ output "api_endpoint" {
 
 # output "routes" {
 #   description = "Map of the routes created and their attributes"
-#   value       = module.api_gateway.routes
+#   value       = local.routes2
 # }

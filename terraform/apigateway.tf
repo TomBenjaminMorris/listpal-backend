@@ -1,39 +1,3 @@
-locals { # try to template this block using https://developer.hashicorp.com/terraform/language/functions/templatefile
-  apigateway_routes = {
-    "GET /all-tasks" = {
-      integration = {
-        uri                    = module.lambda_function["all_tasks"].lambda_function_arn
-        payload_format_version = "2.0"
-      }
-    },
-    "GET /active-tasks" = {
-      integration = {
-        uri                    = module.lambda_function["active_tasks"].lambda_function_arn
-        payload_format_version = "2.0"
-      }
-    },
-    "GET /expired-tasks" = {
-      integration = {
-        uri                    = module.lambda_function["expired_tasks"].lambda_function_arn
-        payload_format_version = "2.0"
-      }
-    },
-    "GET /task" = {
-      integration = {
-        uri                    = module.lambda_function["task"].lambda_function_arn
-        payload_format_version = "2.0"
-      }
-    },
-    "GET /boards" = {
-      integration = {
-        uri                    = module.lambda_function["boards"].lambda_function_arn
-        payload_format_version = "2.0"
-      }
-    }
-  }
-}
-
-# https://github.com/terraform-aws-modules/terraform-aws-apigateway-v2/blob/master/examples/complete-http/main.tf
 module "api_gateway" {
   source  = "terraform-aws-modules/apigateway-v2/aws"
   version = "5.0.0"
