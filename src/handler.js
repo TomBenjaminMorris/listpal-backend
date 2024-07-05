@@ -1,7 +1,7 @@
 "use strict";
 const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
 const client = new DynamoDBClient();
-const tableName = "ListPal-Dev"
+const tableName = "ListPal-" + process.env.Env
 
 module.exports.handler = async (event) => {
     try {

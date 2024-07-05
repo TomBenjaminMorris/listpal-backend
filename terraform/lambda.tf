@@ -18,6 +18,9 @@ module "lambda_function" {
   policies                          = ["arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"] // LIMIT THIS ACCESS!
   number_of_policies                = 1
   cloudwatch_logs_retention_in_days = 1
+  environment_variables = {
+    Env      = var.env
+  }
   allowed_triggers = {
     AllowExecutionFromAPIGateway = {
       service    = "apigateway"
