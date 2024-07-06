@@ -10,7 +10,7 @@ module "lambda_function" {
   for_each = local.lambda_routes
 
   function_name                     = "${lower(var.app)}_${each.key}_${lower(var.env)}"
-  description                       = "My awesome lambda function"
+  description                       = "ListPal API endpoint"
   handler                           = "handler.handler"
   runtime                           = "nodejs20.x"
   create_package                    = false

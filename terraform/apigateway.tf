@@ -51,5 +51,17 @@ module "api_gateway" {
     throttling_rate_limit    = 10
   }
 
+  authorizers = {
+    cognito = {
+      authorizer_type  = "JWT"
+      identity_sources = ["$request.header.Authorization"]
+      name             = "cognito"
+      jwt_configuration = {
+        audience = [aws_cognito_user_pool_client.userpool_client.id]
+        issuer   = "https://${aws_cognito_user_pool.this.endpoint}"
+      }
+    }
+  }
+
   tags = local.tags
 }

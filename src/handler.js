@@ -1,37 +1,58 @@
 "use strict";
 const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
+const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env
 
 module.exports.handler = async (event) => {
-    try {
-      let result, command
-      const params = event.queryStringParameters
+  try {
+    let result;
+    const params = event.queryStringParameters;
+    const token = event.headers.authorization;
+    const decoded = jwtDecode(token);
+    const userID = `u#${decoded.sub}`;
+    let valid = false
       
-      switch (event.routeKey) {
+      switch (event.routeKey) { 
+        //// GET ACTIVE TASKS ////
         case "GET /active-tasks": // Modify to set current date
-          command = new QueryCommand(activeTasksQuery(params.boardID));
-          result = await client.send(command);
+          valid = await verifyBoard(userID, params.boardID);
+          if (!valid) {
+            return {
+              error: "requested board does not belong to the currently logged in user"
+            }
+          }
+          result = await query(activeTasksQuery(params.boardID));
           break;
 
+        
+        //// GET EXPIRED TASKS ////
         case "GET /expired-tasks": // Modify to set current date
-          command = new QueryCommand(expiredTasksQuery(params.boardID));
-          result = await client.send(command);
+          valid = await verifyBoard(userID, params.boardID);
+          if (!valid) {
+            return {
+              error: "requested board does not belong to the currently logged in user"
+            }
+          }
+          result = await query(expiredTasksQuery(params.boardID));
           break;
         
+        
+        //// GET ALL TASKS ////
         case "GET /all-tasks":
-          command = new QueryCommand(allTasksQuery(params.userID));
-          result = await client.send(command);
+          result = await query(allTasksQuery(userID));
           break;
-      
+        
+        
+        //// GET TASKS ////
         case "GET /task":
-          command = new QueryCommand(taskQuery(params.userID, params.taskID));
-          result = await client.send(command);
+          result = await query(taskQuery(userID, params.taskID));
           break;
       
+        
+        //// GET BOARDS ////
         case "GET /boards":
-          command = new QueryCommand(boardsPerUserQuery(params.userID));
-          result = await client.send(command);
+          result = await query(boardsPerUserQuery(userID));
           break;
 
           default:
@@ -47,6 +68,24 @@ module.exports.handler = async (event) => {
     } catch (error) {
       console.log(error);
     }
+}
+
+async function verifyBoard(userID, boardID) {
+  let returnVal = false
+  const boards = await query(boardsPerUserQuery(userID));
+  boards.Items.forEach(board => {
+    console.log(board);
+    if (board.SK.S == boardID) {
+      returnVal = true
+    }
+  });
+  return returnVal
+}
+
+async function query(input) {
+  const command = new QueryCommand(input);
+  const result = await client.send(command);
+  return result
 }
 
 function activeTasksQuery(boardID) {

@@ -1,33 +1,68 @@
+// Users
 {
-  "SK": "u#12345",
+  "SK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "EntityType": "User",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "Email": "tom@example.com",
   "Name": "Tom"
 }
 {
-  "SK": "u#23456",
+  "SK": "u#c672d2a4-60d1-700d-8d39-698f8303a029",
   "EntityType": "User",
-  "PK": "u#23456",
+  "PK": "u#c672d2a4-60d1-700d-8d39-698f8303a029",
   "Email": "adam@example.com",
   "Name": "Adam"
 }
+
+// Boards
 {
   "SK": "b#12345",
   "EntityType": "Board",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "Board": "My Lists"
 }
 {
   "SK": "b#23456",
   "EntityType": "Board",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "Board": "Our Shared List"
+}
+{
+  "SK": "b#23457",
+  "EntityType": "Board",
+  "PK": "u#c672d2a4-60d1-700d-8d39-698f8303a029",
+  "Board": "Adam's List"
+}
+
+// Tasks
+{
+  "SK": "t#99999",
+  "EntityType": "Task",
+  "PK": "u#c672d2a4-60d1-700d-8d39-698f8303a029",
+  "ExpiryDate": "nil",
+  "Description": "Do that thing in the house",
+  "Category": "House",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#23457",
+  "CompletedDate": "nil"
+}
+{
+  "SK": "t#99999",
+  "EntityType": "Task",
+  "PK": "u#c672d2a4-60d1-700d-8d39-698f8303a029",
+  "ExpiryDate": "nil",
+  "Description": "Do that other thing in the house",
+  "Category": "House",
+  "CreatedDate": "2024-06-19",
+  "GSI1-SK": "nil",
+  "GSI1-PK": "b#23457",
+  "CompletedDate": "nil"
 }
 {
   "SK": "t#12345",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-10",
   "Description": "Start reading that book I like",
   "Category": "Personal",
@@ -39,7 +74,7 @@
 {
   "SK": "t#12346",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "nil",
   "Description": "Increase pension contributions",
   "Category": "Finance",
@@ -51,7 +86,7 @@
 {
   "SK": "t#12347",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "nil",
   "Description": "Set up regular 1:1s",
   "Category": "Work",
@@ -63,7 +98,7 @@
 {
   "SK": "t#12348",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-10",
   "Description": "Clean the flat",
   "Category": "Personal",
@@ -75,7 +110,7 @@
 {
   "SK": "t#12349",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-19",
   "Description": "Update net worth spreadsheet",
   "Category": "Finance",
@@ -87,7 +122,7 @@
 {
   "SK": "t#12350",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-19",
   "Description": "Make mad money",
   "Category": "Finance",
@@ -99,7 +134,7 @@
 {
   "SK": "t#12351",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-19",
   "Description": "Don't lose mad money",
   "Category": "Finance",
@@ -111,7 +146,7 @@
 {
   "SK": "t#12352",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-19",
   "Description": "Clean the flat",
   "Category": "Personal",
@@ -123,7 +158,7 @@
 {
   "SK": "t#23456",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "nil",
   "Description": "Pick up package from Post Office",
   "Category": "Personal",
@@ -135,7 +170,7 @@
 {
   "SK": "t#34567",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "2024-06-10",
   "Description": "Eat dinner",
   "Category": "Personal",
@@ -147,7 +182,7 @@
 {
   "SK": "t#45678",
   "EntityType": "Task",
-  "PK": "u#12345",
+  "PK": "u#0672a2b4-4081-70a1-55e4-59f2dde874aa",
   "ExpiryDate": "nil",
   "Description": "Finnish that task that I hate",
   "Category": "Work",
