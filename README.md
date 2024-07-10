@@ -23,6 +23,7 @@
 * https://stackoverflow.com/questions/52287506/how-do-i-integrate-amazon-cognito-login-in-postman
 * https://www.cognitobuilders.training/20-lab1/30-postman/10-configure-oauth2/
 * https://docs.aws.amazon.com/cognito/latest/developerguide/getting-started-test-application-react.html
+* https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/javascriptv3/example_code/cognito-identity-provider/scenarios/cognito-developer-guide-react-example/frontend-client
 
 ### DynamoDB
 * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.Visualizer.ImportCSV.html
