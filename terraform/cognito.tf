@@ -32,8 +32,8 @@ resource "aws_cognito_user_pool_client" "userpool_client" {
   callback_urls                        = ["https://example.com", "https://localhost", "http://localhost"] # This will need to be updated to include the real listpal endpoint once deployed
   supported_identity_providers         = ["COGNITO"]
   allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_flows                  = ["code", ]
-  allowed_oauth_scopes                 = ["openid"]
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "aws.cognito.signin.user.admin"]
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_PASSWORD_AUTH",

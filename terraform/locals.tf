@@ -27,7 +27,7 @@ locals {
     "${v.route}" => {
       authorization_type   = v.protected ? "JWT" : "NONE"
       authorizer_key       = v.protected ? "cognito" : ""
-      authorization_scopes = v.protected ? ["openid"] : []
+      authorization_scopes = v.protected ? ["openid", "aws.cognito.signin.user.admin"] : []
 
       integration = {
         uri                    = module.lambda_function[k].lambda_function_arn
