@@ -1,6 +1,6 @@
 # listpal-backend
 ## Useful Links:
-### TF
+### Terraform
 * https://build5nines.com/terraform-convert-list-to-map-of-objects-using-for-loop/
 
 ### API Gateway
@@ -22,8 +22,8 @@
 * https://medium.com/@shivkaundal/secure-your-apis-with-cognito-authorizers-for-aws-api-gateway-ba15914b64b2
 * https://stackoverflow.com/questions/52287506/how-do-i-integrate-amazon-cognito-login-in-postman
 * https://www.cognitobuilders.training/20-lab1/30-postman/10-configure-oauth2/
-* https://docs.aws.amazon.com/cognito/latest/developerguide/getting-started-test-application-react.html
-* https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/javascriptv3/example_code/cognito-identity-provider/scenarios/cognito-developer-guide-react-example/frontend-client
+* https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cognito_user_pool#required
+* https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cognito_user_pool_client
 
 ### DynamoDB
 * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.Visualizer.ImportCSV.html
