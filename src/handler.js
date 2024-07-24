@@ -1,5 +1,6 @@
 "use strict";
 const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
+const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env
@@ -12,62 +13,66 @@ module.exports.handler = async (event) => {
     const decoded = jwtDecode(token);
     const userID = `u#${decoded.sub}`;
     let valid = false
-      
-      switch (event.routeKey) { 
-        //// GET ACTIVE TASKS ////
-        case "GET /active-tasks": // Modify to set current date
-          valid = await verifyBoard(userID, params.boardID);
-          if (!valid) {
-            return {
-              error: "requested board does not belong to the currently logged in user"
-            }
-          }
-          result = await query(activeTasksQuery(params.boardID));
-          break;
 
-        
-        //// GET EXPIRED TASKS ////
-        case "GET /expired-tasks": // Modify to set current date
-          valid = await verifyBoard(userID, params.boardID);
-          if (!valid) {
-            return {
-              error: "requested board does not belong to the currently logged in user"
-            }
+    switch (event.routeKey) {
+      //// GET ACTIVE TASKS ////
+      case "GET /active-tasks": // Modify to set current date
+        valid = await verifyBoard(userID, params.boardID);
+        if (!valid) {
+          return {
+            error: "requested board does not belong to the currently logged in user"
           }
-          result = await query(expiredTasksQuery(params.boardID));
-          break;
-        
-        
-        //// GET ALL TASKS ////
-        case "GET /all-tasks":
-          result = await query(allTasksQuery(userID));
-          break;
-        
-        
-        //// GET TASKS ////
-        case "GET /task":
-          result = await query(taskQuery(userID, params.taskID));
-          break;
-      
-        
-        //// GET BOARDS ////
-        case "GET /boards":
-          result = await query(boardsPerUserQuery(userID));
-          break;
+        }
+        result = await query(activeTasksQuery(params.boardID));
+        break;
 
-          default:
-            throw new Error(`Unsupported route: "${event.routeKey}"`);
-      }
-          
-      return {
-        count: result.Count,
-        scannedCount: result.ScannedCount,
-        data: result.Items
-      }
-      
-    } catch (error) {
-      console.log(error);
+
+      //// GET EXPIRED TASKS ////
+      case "GET /expired-tasks": // Modify to set current date
+        valid = await verifyBoard(userID, params.boardID);
+        if (!valid) {
+          return {
+            error: "requested board does not belong to the currently logged in user"
+          }
+        }
+        result = await query(expiredTasksQuery(params.boardID));
+        break;
+
+
+      //// GET ALL TASKS ////
+      case "GET /all-tasks":
+        result = await query(allTasksQuery(userID));
+        break;
+
+
+      //// GET TASKS ////
+      case "GET /task":
+        result = await query(taskQuery(userID, params.taskID));
+        break;
+
+
+      //// GET BOARDS ////
+      case "GET /boards":
+        result = await query(boardsPerUserQuery(userID));
+        break;
+
+      default:
+        throw new Error(`Unsupported route: "${event.routeKey}"`);
     }
+
+    const data = result.Items.map((item) => {
+      return unmarshall(item);
+    });
+
+    return {
+      // count: result.Count,
+      // scannedCount: result.ScannedCount,
+      data: data
+    }
+
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 async function verifyBoard(userID, boardID) {
@@ -94,7 +99,7 @@ function activeTasksQuery(boardID) {
     "ScanIndexForward": true,
     "IndexName": "GSI1",
     "KeyConditionExpression": "#c1490 = :c1490 And #c1491 >= :c1491",
-    "ProjectionExpression": "SK, Description, Category, ExpiryDate",
+    // "ProjectionExpression": "SK, Description, Category, ExpiryDate",
     "ExpressionAttributeValues": {
       ":c1490": {
         "S": boardID
