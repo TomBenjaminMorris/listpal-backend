@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.632.0",
+    "@aws-sdk/util-dynamodb": "^3.632.0",
+    "dynamodb-data-types": "^4.0.1"
+  },
+  "type": "module"
+}

@@ -1,0 +1,190 @@
+[
+  {
+    "SK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "Board",
+    "Board": "My Lists"
+  },
+  {
+    "SK": "b#6bb7380c-f530-4b79-a200-2803778f215c",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "Board",
+    "Board": "Our Shared List"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1717974000000",
+    "SK": "t#06d95362-315a-4492-8d1d-c163b2fb6959",
+    "ExpiryDate": "1717974000000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Clean the flat",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#4304fcf2-de89-4ed5-a344-2291775ae91a",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Clean the flat",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#48d8157f-9592-4f71-be17-10ef5b2e5d56",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Finish that task that I hate",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Work",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#9bb697a0-36d8-4c08-915e-ddb67625269d",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#6bb7380c-f530-4b79-a200-2803778f215c",
+    "Description": "Make mad money",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#9c6ca32a-e77b-4022-87a6-94a01205b3bb",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Set up regular 1:1s",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Work",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#ab6c17f8-abf6-40a8-9d7d-ee24128535cd",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#6bb7380c-f530-4b79-a200-2803778f215c",
+    "Description": "Don't lose mad money",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1717974000000",
+    "SK": "t#af387e4d-474f-4156-bd91-c2255d88df13",
+    "ExpiryDate": "1717974000000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Eat dinner",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#ca73cd9f-b1e1-4760-8682-9ef5195312cf",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Update net worth spreadsheet",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#cba4040e-5420-4e3f-88cb-b1114eb99df6",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Pick up package from Post Office",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#eeff892e-2fcc-49bc-b3aa-b285d9bb1f4f",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Increase pension contributions",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1717974000000",
+    "SK": "t#f920c311-aaf3-4a48-9a85-d9bac6300c75",
+    "ExpiryDate": "1717974000000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Start reading that book I like",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "SK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "User",
+    "Email": "tom@example.com",
+    "Name": "Tom"
+  },
+  {
+    "SK": "b#bac0916c-c477-4dfa-beec-5f4d5a389df7",
+    "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "EntityType": "Board",
+    "Board": "Adam's List"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#3eb89b2f-f60b-4e48-ac4b-741a715d793d",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#bac0916c-c477-4dfa-beec-5f4d5a389df7",
+    "Description": "Do that thing in the house",
+    "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "CompletedDate": "nil",
+    "Category": "House",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#4a3e7ca2-6796-49cb-b479-cda09ad9466b",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#bac0916c-c477-4dfa-beec-5f4d5a389df7",
+    "Description": "Do that other thing in the house",
+    "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "CompletedDate": "nil",
+    "Category": "House",
+    "EntityType": "Task"
+  },
+  {
+    "SK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "EntityType": "User",
+    "Email": "adam@example.com",
+    "Name": "Adam"
+  }
+]
