@@ -19,6 +19,10 @@ locals {
     boards = {
       route     = "GET /boards"
       protected = true
+    },
+    user = {
+      route     = "GET /user"
+      protected = true
     }
   }
 

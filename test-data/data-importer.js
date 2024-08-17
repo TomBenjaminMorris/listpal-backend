@@ -3,7 +3,7 @@ import dataTypes from "dynamodb-data-types";
 const attr = dataTypes.AttributeValue
 import * as fs from 'node:fs';
 
-const dynamoTableName = 'ListPal-Dev-2';
+const dynamoTableName = 'ListPal-Dev';
 const importFile = './exports/ListPal-Dev-Test-Data-2024-08-17.json';
 
 let rawdata = fs.readFileSync(importFile);

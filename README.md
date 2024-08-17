@@ -28,3 +28,4 @@
 ### DynamoDB
 * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.Visualizer.ImportCSV.html
 * https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-aws-sdk-util-dynamodb/
+* https://cloudquest.medium.com/how-to-bulk-insert-json-into-dynamodb-6f3b67020abd

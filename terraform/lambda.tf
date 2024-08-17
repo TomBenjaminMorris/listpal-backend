@@ -16,6 +16,8 @@ module "lambda_function" {
   create_package                    = false
   local_existing_package            = "${path.module}/../src.zip"
   cloudwatch_logs_retention_in_days = 1
+  publish                           = true
+  # create_current_version_allowed_triggers = false
 
   attach_policy_json = true
   policy_json        = <<-EOT

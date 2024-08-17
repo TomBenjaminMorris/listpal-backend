@@ -25,6 +25,18 @@
   },
   {
     "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#33c5b203-4148-4f21-8632-805d64458cd3",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Find a good book on active listening",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
     "GSI1-SK": "1718751600000",
     "SK": "t#4304fcf2-de89-4ed5-a344-2291775ae91a",
     "ExpiryDate": "1718751600000",
@@ -97,6 +109,18 @@
   },
   {
     "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#c7328dc4-5635-49a5-ad0e-f2c0cfecc635",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Visit the parents before they go on holiday",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
     "GSI1-SK": "1718751600000",
     "SK": "t#ca73cd9f-b1e1-4760-8682-9ef5195312cf",
     "ExpiryDate": "1718751600000",
@@ -109,11 +133,71 @@
   },
   {
     "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#5371e8ad-f613-41f5-b47d-271580394776",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Sort student finance payments",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "1718751600000",
+    "SK": "t#34bf6752-34a1-4db5-b798-807fe348784c",
+    "ExpiryDate": "1718751600000",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Close that old bank account",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "1718838000000",
+    "Category": "Finance",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
     "GSI1-SK": "nil",
     "SK": "t#cba4040e-5420-4e3f-88cb-b1114eb99df6",
     "ExpiryDate": "nil",
     "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
     "Description": "Pick up package from Post Office",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#d0584dfe-173f-4b1e-9596-c2ec7b08d194",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Read the other book that is less interesting but still mildly engaging",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#d06e2e40-3cff-45dc-92dc-26125f58c15d",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Yoga with the boys",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "CompletedDate": "nil",
+    "Category": "Personal",
+    "EntityType": "Task"
+  },
+  {
+    "CreatedDate": "1718751600000",
+    "GSI1-SK": "nil",
+    "SK": "t#d8aae2e6-73bc-4e04-84bd-189970e2625f",
+    "ExpiryDate": "nil",
+    "GSI1-PK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "Description": "Another task",
     "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
     "CompletedDate": "nil",
     "Category": "Personal",
@@ -144,11 +228,16 @@
     "EntityType": "Task"
   },
   {
+    "WScore": 3,
+    "YTarget": 365,
     "SK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
     "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "MScore": 21,
+    "Theme": "dark-red",
     "EntityType": "User",
     "Email": "tom@example.com",
-    "Name": "Tom"
+    "Name": "Tom",
+    "YScore": 100
   },
   {
     "SK": "b#bac0916c-c477-4dfa-beec-5f4d5a389df7",
@@ -181,10 +270,15 @@
     "EntityType": "Task"
   },
   {
+    "WScore": 6,
+    "YTarget": 365,
     "SK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
     "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
+    "MScore": 48,
+    "Theme": "dark-red",
     "EntityType": "User",
     "Email": "adam@example.com",
-    "Name": "Adam"
+    "Name": "Adam",
+    "YScore": 200
   }
 ]

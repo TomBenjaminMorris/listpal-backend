@@ -56,6 +56,12 @@ module.exports.handler = async (event) => {
         result = await query(boardsPerUserQuery(userID));
         break;
 
+
+      //// GET USER ////
+      case "GET /user":
+        result = await query(getUser(userID));
+        break;
+
       default:
         throw new Error(`Unsupported route: "${event.routeKey}"`);
     }
@@ -79,7 +85,7 @@ async function verifyBoard(userID, boardID) {
   let returnVal = false
   const boards = await query(boardsPerUserQuery(userID));
   boards.Items.forEach(board => {
-    console.log(board);
+    // console.log(board);
     if (board.SK.S == boardID) {
       returnVal = true
     }
@@ -194,6 +200,28 @@ function boardsPerUserQuery(userID) {
       },
       ":cd421": {
         "S": "b#"
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#cd420": "PK",
+      "#cd421": "SK"
+    }
+  }
+}
+
+function getUser(userID) {
+  return {
+    "TableName": tableName,
+    "ScanIndexForward": true,
+    "ConsistentRead": false,
+    "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
+    "ProjectionExpression": "WScore, YTarget, MScore, Theme, YScore",
+    "ExpressionAttributeValues": {
+      ":cd420": {
+        "S": userID
+      },
+      ":cd421": {
+        "S": userID
       }
     },
     "ExpressionAttributeNames": {
