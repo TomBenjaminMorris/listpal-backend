@@ -105,7 +105,7 @@ function activeTasksQuery(boardID) {
         "S": boardID
       },
       ":c1491": {
-        "S": "2024-06-19"
+        "S": "1718751600000"
       }
     },
     "ExpressionAttributeNames": {
@@ -127,7 +127,7 @@ function expiredTasksQuery(boardID) {
         "S": boardID
       },
       ":c1491": {
-        "S": "2024-06-19"
+        "S": "1718751600000"
       }
     },
     "ExpressionAttributeNames": {
