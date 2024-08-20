@@ -215,7 +215,7 @@ function getUser(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
-    "ProjectionExpression": "WScore, YTarget, MScore, Theme, YScore",
+    "ProjectionExpression": "WScore, YTarget, MTarget, WTarget, MScore, Theme, YScore",
     "ExpressionAttributeValues": {
       ":cd420": {
         "S": userID
