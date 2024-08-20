@@ -230,6 +230,8 @@
   {
     "WScore": 3,
     "YTarget": 365,
+    "MTarget": 30,
+    "WTarget": 7,
     "SK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
     "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
     "MScore": 21,
@@ -272,6 +274,8 @@
   {
     "WScore": 6,
     "YTarget": 365,
+    "MTarget": 30,
+    "WTarget": 7,
     "SK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
     "PK": "u#26d212c4-9001-70b0-0f9d-2dfe8f39db8e",
     "MScore": 48,
