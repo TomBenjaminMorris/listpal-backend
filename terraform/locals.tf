@@ -39,6 +39,10 @@ locals {
     delete_task = {
       route     = "POST /delete-task"
       protected = true
+    },
+    rename_category = {
+      route     = "POST /rename-category"
+      protected = true
     }
   }
 

@@ -79,7 +79,6 @@ module.exports.handler = async (event) => {
 
       //// ADD TASK ////
       case "POST /new-task":
-        // console.log("TTT in new task", userID, body);
         result = await add(addTask(userID, body));
         break;
 
@@ -87,6 +86,12 @@ module.exports.handler = async (event) => {
       //// DELETE TASK ////
       case "POST /delete-task":
         result = await remove(deleteTask(userID, body.taskID));
+        break;
+
+
+      //// RENAME CATEGORY ////
+      case "POST /rename-category":
+        result = await renameCategory(userID, body.taskIDs, body.category);
         break;
 
 
@@ -113,7 +118,6 @@ async function verifyBoard(userID, boardID) {
   let returnVal = false
   const boards = await query(boardsPerUserQuery(userID));
   boards.Items.forEach(board => {
-    // console.log(board);
     if (board.SK.S == boardID) {
       returnVal = true
     }
@@ -320,3 +324,36 @@ function deleteTask(userID, taskID) {
     }
   }
 }
+
+async function renameCategory(userID, taskIDs, category) {
+  let result = []
+  try {
+    for (const id of taskIDs) {
+      const data = await update(getRenameCommand(userID, id, category));
+      result.push(data)
+    }
+    return result
+  } catch (e) {
+    return "Batch update failed: " + e;
+  }
+}
+
+function getRenameCommand(userID, taskID, category) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": taskID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": category
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "Category"
+    }
+  }
+}
+
