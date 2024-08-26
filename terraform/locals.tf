@@ -23,6 +23,22 @@ locals {
     user = {
       route     = "GET /user"
       protected = true
+    },
+    task_description = {
+      route     = "POST /task-description"
+      protected = true
+    },
+    task_details = {
+      route     = "POST /task-details"
+      protected = true
+    },
+    new_task = {
+      route     = "POST /new-task"
+      protected = true
+    },
+    delete_task = {
+      route     = "POST /delete-task"
+      protected = true
     }
   }
 
