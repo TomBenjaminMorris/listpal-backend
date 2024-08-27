@@ -47,6 +47,10 @@ locals {
     user_scores = {
       route     = "POST /user-scores"
       protected = true
+    },
+    user_targets = {
+      route     = "POST /user-targets"
+      protected = true
     }
   }
 

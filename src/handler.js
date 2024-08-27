@@ -71,6 +71,12 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// UPDATE USER TARGETS ////
+      case "POST /user-targets":
+        writeResult = await update(updateUserTargets(userID, body.targets));
+        break;
+
+
       //// UPDATE TASK DESCRIPTION ////
       case "POST /task-description":
         writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
@@ -380,6 +386,27 @@ function updateUserScores(userID, scores) {
       "#9eb50": "YScore",
       "#9eb51": "MScore",
       "#9eb52": "WScore"
+    }
+  }
+}
+
+function updateUserTargets(userID, targets) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": userID }
+    },
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb50": { "N": String(targets.YTarget) },
+      ":9eb51": { "N": String(targets.MTarget) },
+      ":9eb52": { "N": String(targets.WTarget) }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb50": "YTarget",
+      "#9eb51": "MTarget",
+      "#9eb52": "WTarget"
     }
   }
 }
