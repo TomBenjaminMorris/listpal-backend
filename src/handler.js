@@ -7,7 +7,7 @@ const tableName = "ListPal-" + process.env.Env;
 
 module.exports.handler = async (event) => {
   try {
-    let readResult, result;
+    let readResult, writeResult;
     const params = event.queryStringParameters;
     const body = event.body && JSON.parse(event['body']);
     // console.log("TTT", JSON.stringify(body));
@@ -65,33 +65,39 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// UPDATE USER SCORES ////
+      case "POST /user-scores":
+        writeResult = await update(updateUserScores(userID, body.scores));
+        break;
+
+
       //// UPDATE TASK DESCRIPTION ////
       case "POST /task-description":
-        result = await update(updateTaskDescription(userID, body.taskID, body.description));
+        writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
         break;
 
 
       //// UPDATE TASK DETAILS ////
       case "POST /task-details":
-        result = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK));
+        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK));
         break;
 
 
       //// ADD TASK ////
       case "POST /new-task":
-        result = await add(addTask(userID, body));
+        writeResult = await add(addTask(userID, body));
         break;
 
 
       //// DELETE TASK ////
       case "POST /delete-task":
-        result = await remove(deleteTask(userID, body.taskID));
+        writeResult = await remove(deleteTask(userID, body.taskID));
         break;
 
 
       //// RENAME CATEGORY ////
       case "POST /rename-category":
-        result = await renameCategory(userID, body.taskIDs, body.category);
+        writeResult = await renameCategory(userID, body.taskIDs, body.category);
         break;
 
 
@@ -104,9 +110,9 @@ module.exports.handler = async (event) => {
     });
 
     return {
-      // count: result.Count,
-      // scannedCount: result.ScannedCount,
-      data: data ? data : result
+      // count: writeResult.Count,
+      // scannedCount: writeResult.ScannedCount,
+      data: data ? data : writeResult
     }
 
   } catch (error) {
@@ -357,3 +363,23 @@ function getRenameCommand(userID, taskID, category) {
   }
 }
 
+function updateUserScores(userID, scores) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": userID }
+    },
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb50": { "N": String(scores.YScore) },
+      ":9eb51": { "N": String(scores.MScore) },
+      ":9eb52": { "N": String(scores.WScore) }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb50": "YScore",
+      "#9eb51": "MScore",
+      "#9eb52": "WScore"
+    }
+  }
+}

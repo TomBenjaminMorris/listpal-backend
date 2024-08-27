@@ -43,6 +43,10 @@ locals {
     rename_category = {
       route     = "POST /rename-category"
       protected = true
+    },
+    user_scores = {
+      route     = "POST /user-scores"
+      protected = true
     }
   }
 
