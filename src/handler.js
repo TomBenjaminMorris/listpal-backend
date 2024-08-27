@@ -106,6 +106,18 @@ module.exports.handler = async (event) => {
         writeResult = await renameCategory(userID, body.taskIDs, body.category);
         break;
 
+      
+      //// ADD BOARD ////
+      case "POST /new-board":
+        writeResult = await add(addBoard(userID, body));
+        break;
+
+
+      //// RENAME BOARD ////
+      case "POST /rename-board":
+        writeResult = await update(renameBoard(userID, body.boardID, body.name));
+        break;
+
 
       default:
         throw new Error(`Unsupported route: "${event.routeKey}"`);
@@ -407,6 +419,37 @@ function updateUserTargets(userID, targets) {
       "#9eb50": "YTarget",
       "#9eb51": "MTarget",
       "#9eb52": "WTarget"
+    }
+  }
+}
+
+function addBoard(userID, body) {
+  return {
+    "Item": {
+      "SK": { "S": body.boardID },
+      "PK": { "S": userID },
+      "Board": { "S": body.boardName },
+      "EntityType": { "S": "Board" }
+    },
+    "TableName": tableName
+  }
+}
+
+function renameBoard(userID, boardID, name) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": name
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "Board"
     }
   }
 }

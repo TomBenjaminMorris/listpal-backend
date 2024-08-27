@@ -51,6 +51,14 @@ locals {
     user_targets = {
       route     = "POST /user-targets"
       protected = true
+    },
+    new_board = {
+      route     = "POST /new-board"
+      protected = true
+    },
+    rename_board = {
+      route     = "POST /rename-board"
+      protected = true
     }
   }
 
