@@ -59,6 +59,10 @@ locals {
     rename_board = {
       route     = "POST /rename-board"
       protected = true
+    },
+    delete_board = {
+      route     = "POST /delete-board"
+      protected = true
     }
   }
 
@@ -70,7 +74,8 @@ locals {
       authorization_scopes = v.protected ? ["aws.cognito.signin.user.admin"] : []
 
       integration = {
-        uri                    = module.lambda_function[k].lambda_function_arn
+        uri = module.lambda_function[k].lambda_function_arn
+        # uri                    = module.lambda_function.lambda_function_arn
         payload_format_version = "2.0"
       }
     }

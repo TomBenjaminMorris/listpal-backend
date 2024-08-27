@@ -119,6 +119,12 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// DELETE BOARD ////
+      case "POST /delete-board":
+        writeResult = await remove(deleteBoard(userID, body.boardID));
+        break;
+
+
       default:
         throw new Error(`Unsupported route: "${event.routeKey}"`);
     }
@@ -182,7 +188,8 @@ function activeTasksQuery(boardID) {
     // "ProjectionExpression": "SK, Description, Category, ExpiryDate",
     "ExpressionAttributeValues": {
       ":c1490": { "S": boardID },
-      ":c1491": { "S": "1718751600000" }
+      // ":c1491": { "S": "1718751600000" }
+      ":c1491": { "S": String(Date.now()) }
     },
     "ExpressionAttributeNames": {
       "#c1490": "GSI1-PK",
@@ -200,7 +207,8 @@ function expiredTasksQuery(boardID) {
     "ProjectionExpression": "SK, Description, Category, ExpiryDate",
     "ExpressionAttributeValues": {
       ":c1490": { "S": boardID },
-      ":c1491": { "S": "1718751600000" }
+      // ":c1491": { "S": "1718751600000" }
+      ":c1491": { "S": String(Date.now()) }
     },
     "ExpressionAttributeNames": {
       "#c1490": "GSI1-PK",
@@ -450,6 +458,16 @@ function renameBoard(userID, boardID, name) {
     },
     "ExpressionAttributeNames": {
       "#6e6a0": "Board"
+    }
+  }
+}
+
+function deleteBoard(userID, boardID) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
     }
   }
 }
