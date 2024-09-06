@@ -87,6 +87,12 @@ module.exports.handler = async (event) => {
       case "POST /task-details":
         writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK));
         break;
+      
+
+      //// UPDATE TASK IMPORTANCE ////
+      case "POST /task-important":
+        writeResult = await update(updateTaskImportance(userID, body.taskID, body.isImportant));
+        break;
 
 
       //// ADD TASK ////
@@ -304,6 +310,25 @@ function updateTaskDescription(userID, taskID, description) {
     },
     "ExpressionAttributeNames": {
       "#6e6a0": "Description"
+    }
+  }
+}
+
+function updateTaskImportance(userID, taskID, isImportant) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": taskID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": isImportant
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "Important"
     }
   }
 }

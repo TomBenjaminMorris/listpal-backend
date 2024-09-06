@@ -32,6 +32,10 @@ locals {
       route     = "POST /task-details"
       protected = true
     },
+    task_important = {
+      route     = "POST /task-important"
+      protected = true
+    },
     new_task = {
       route     = "POST /new-task"
       protected = true
