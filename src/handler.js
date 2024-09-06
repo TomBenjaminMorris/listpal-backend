@@ -75,6 +75,12 @@ module.exports.handler = async (event) => {
       case "POST /user-targets":
         writeResult = await update(updateUserTargets(userID, body.targets));
         break;
+      
+
+      //// UPDATE USER THEME ////
+      case "POST /user-theme":
+        writeResult = await update(updateUserTheme(userID, body.theme));
+        break;
 
 
       //// UPDATE TASK DESCRIPTION ////
@@ -452,6 +458,23 @@ function updateUserTargets(userID, targets) {
       "#9eb50": "YTarget",
       "#9eb51": "MTarget",
       "#9eb52": "WTarget"
+    }
+  }
+}
+
+function updateUserTheme(userID, theme) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": userID }
+    },
+    "UpdateExpression": "SET #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb52": { "S": theme }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb52": "Theme"
     }
   }
 }

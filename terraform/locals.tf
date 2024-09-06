@@ -56,6 +56,10 @@ locals {
       route     = "POST /user-targets"
       protected = true
     },
+    user_theme = {
+      route     = "POST /user-theme"
+      protected = true
+    },
     new_board = {
       route     = "POST /new-board"
       protected = true
