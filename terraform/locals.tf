@@ -71,6 +71,10 @@ locals {
     delete_board = {
       route     = "POST /delete-board"
       protected = true
+    },
+    board_scores = {
+      route     = "POST /board-scores"
+      protected = true
     }
   }
 

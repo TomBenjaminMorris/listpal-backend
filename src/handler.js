@@ -135,6 +135,12 @@ module.exports.handler = async (event) => {
       case "POST /delete-board":
         writeResult = await remove(deleteBoard(userID, body.boardID));
         break;
+      
+      
+      //// UPDATE BOARD SCORES ////
+      case "POST /board-scores":
+        writeResult = await update(updateBoardScores(userID, body.boardID, body.scores));
+        break;
 
 
       default:
@@ -271,7 +277,7 @@ function boardsPerUserQuery(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Board",
+    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "b#" }
@@ -516,6 +522,27 @@ function deleteBoard(userID, boardID) {
     "Key": {
       "PK": { "S": userID },
       "SK": { "S": boardID }
+    }
+  }
+}
+
+function updateBoardScores(userID, boardID, scores) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb50": { "N": String(scores.YScore) },
+      ":9eb51": { "N": String(scores.MScore) },
+      ":9eb52": { "N": String(scores.WScore) }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb50": "YScore",
+      "#9eb51": "MScore",
+      "#9eb52": "WScore"
     }
   }
 }
