@@ -491,7 +491,13 @@ function addBoard(userID, body) {
       "SK": { "S": body.boardID },
       "PK": { "S": userID },
       "Board": { "S": body.boardName },
-      "EntityType": { "S": "Board" }
+      "EntityType": { "S": "Board" },
+      "WScore": { "N": String(0) },
+      "MScore": { "N": String(0) },
+      "YScore": { "N": String(0) },
+      "WTarget": { "N": String(7) },
+      "MTarget": { "N": String(31) },
+      "YTarget": { "N": String(365) },
     },
     "TableName": tableName
   }
