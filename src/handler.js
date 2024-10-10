@@ -66,15 +66,15 @@ module.exports.handler = async (event) => {
 
 
       //// UPDATE USER SCORES ////
-      case "POST /user-scores":
-        writeResult = await update(updateUserScores(userID, body.scores));
-        break;
+      // case "POST /user-scores":
+      //   writeResult = await update(updateUserScores(userID, body.scores));
+      //   break;
 
 
       //// UPDATE USER TARGETS ////
-      case "POST /user-targets":
-        writeResult = await update(updateUserTargets(userID, body.targets));
-        break;
+      // case "POST /user-targets":
+      //   writeResult = await update(updateUserTargets(userID, body.targets));
+      //   break;
       
 
       //// UPDATE USER THEME ////
@@ -134,6 +134,12 @@ module.exports.handler = async (event) => {
       //// DELETE BOARD ////
       case "POST /delete-board":
         writeResult = await remove(deleteBoard(userID, body.boardID));
+        break;
+      
+      
+      //// UPDATE BOARD SCORES ////
+      case "POST /board-scores":
+        writeResult = await update(updateBoardScores(userID, body.boardID, body.scores));
         break;
 
 
@@ -271,7 +277,7 @@ function boardsPerUserQuery(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Board",
+    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "b#" }
@@ -420,47 +426,47 @@ function getRenameCommand(userID, taskID, category) {
   }
 }
 
-function updateUserScores(userID, scores) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": userID }
-    },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb50": { "N": String(scores.YScore) },
-      ":9eb51": { "N": String(scores.MScore) },
-      ":9eb52": { "N": String(scores.WScore) }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb50": "YScore",
-      "#9eb51": "MScore",
-      "#9eb52": "WScore"
-    }
-  }
-}
+// function updateUserScores(userID, scores) {
+//   return {
+//     "TableName": tableName,
+//     "Key": {
+//       "PK": { "S": userID },
+//       "SK": { "S": userID }
+//     },
+//     "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+//     "ExpressionAttributeValues": {
+//       ":9eb50": { "N": String(scores.YScore) },
+//       ":9eb51": { "N": String(scores.MScore) },
+//       ":9eb52": { "N": String(scores.WScore) }
+//     },
+//     "ExpressionAttributeNames": {
+//       "#9eb50": "YScore",
+//       "#9eb51": "MScore",
+//       "#9eb52": "WScore"
+//     }
+//   }
+// }
 
-function updateUserTargets(userID, targets) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": userID }
-    },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb50": { "N": String(targets.YTarget) },
-      ":9eb51": { "N": String(targets.MTarget) },
-      ":9eb52": { "N": String(targets.WTarget) }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb50": "YTarget",
-      "#9eb51": "MTarget",
-      "#9eb52": "WTarget"
-    }
-  }
-}
+// function updateUserTargets(userID, targets) {
+//   return {
+//     "TableName": tableName,
+//     "Key": {
+//       "PK": { "S": userID },
+//       "SK": { "S": userID }
+//     },
+//     "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+//     "ExpressionAttributeValues": {
+//       ":9eb50": { "N": String(targets.YTarget) },
+//       ":9eb51": { "N": String(targets.MTarget) },
+//       ":9eb52": { "N": String(targets.WTarget) }
+//     },
+//     "ExpressionAttributeNames": {
+//       "#9eb50": "YTarget",
+//       "#9eb51": "MTarget",
+//       "#9eb52": "WTarget"
+//     }
+//   }
+// }
 
 function updateUserTheme(userID, theme) {
   return {
@@ -485,7 +491,13 @@ function addBoard(userID, body) {
       "SK": { "S": body.boardID },
       "PK": { "S": userID },
       "Board": { "S": body.boardName },
-      "EntityType": { "S": "Board" }
+      "EntityType": { "S": "Board" },
+      "WScore": { "N": String(0) },
+      "MScore": { "N": String(0) },
+      "YScore": { "N": String(0) },
+      "WTarget": { "N": String(7) },
+      "MTarget": { "N": String(31) },
+      "YTarget": { "N": String(365) },
     },
     "TableName": tableName
   }
@@ -516,6 +528,27 @@ function deleteBoard(userID, boardID) {
     "Key": {
       "PK": { "S": userID },
       "SK": { "S": boardID }
+    }
+  }
+}
+
+function updateBoardScores(userID, boardID, scores) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb50": { "N": String(scores.YScore) },
+      ":9eb51": { "N": String(scores.MScore) },
+      ":9eb52": { "N": String(scores.WScore) }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb50": "YScore",
+      "#9eb51": "MScore",
+      "#9eb52": "WScore"
     }
   }
 }

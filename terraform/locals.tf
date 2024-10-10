@@ -48,14 +48,14 @@ locals {
       route     = "POST /rename-category"
       protected = true
     },
-    user_scores = {
-      route     = "POST /user-scores"
-      protected = true
-    },
-    user_targets = {
-      route     = "POST /user-targets"
-      protected = true
-    },
+    # user_scores = {
+    #   route     = "POST /user-scores"
+    #   protected = true
+    # },
+    # user_targets = {
+    #   route     = "POST /user-targets"
+    #   protected = true
+    # },
     user_theme = {
       route     = "POST /user-theme"
       protected = true
@@ -70,6 +70,10 @@ locals {
     },
     delete_board = {
       route     = "POST /delete-board"
+      protected = true
+    },
+    board_scores = {
+      route     = "POST /board-scores"
       protected = true
     }
   }
