@@ -75,6 +75,10 @@ locals {
     board_scores = {
       route     = "POST /board-scores"
       protected = true
+    },
+    board_targets = {
+      route     = "POST /board-targets"
+      protected = true
     }
   }
 

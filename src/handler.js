@@ -75,7 +75,7 @@ module.exports.handler = async (event) => {
       // case "POST /user-targets":
       //   writeResult = await update(updateUserTargets(userID, body.targets));
       //   break;
-      
+
 
       //// UPDATE USER THEME ////
       case "POST /user-theme":
@@ -93,7 +93,7 @@ module.exports.handler = async (event) => {
       case "POST /task-details":
         writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK));
         break;
-      
+
 
       //// UPDATE TASK IMPORTANCE ////
       case "POST /task-important":
@@ -118,7 +118,7 @@ module.exports.handler = async (event) => {
         writeResult = await renameCategory(userID, body.taskIDs, body.category);
         break;
 
-      
+
       //// ADD BOARD ////
       case "POST /new-board":
         writeResult = await add(addBoard(userID, body));
@@ -135,11 +135,17 @@ module.exports.handler = async (event) => {
       case "POST /delete-board":
         writeResult = await remove(deleteBoard(userID, body.boardID));
         break;
-      
-      
+
+
       //// UPDATE BOARD SCORES ////
       case "POST /board-scores":
         writeResult = await update(updateBoardScores(userID, body.boardID, body.scores));
+        break;
+
+
+      //// UPDATE BOARD TARGETS ////
+      case "POST /board-targets":
+        writeResult = await update(updateBoardTargets(userID, body.boardID, body.targets));
         break;
 
 
@@ -549,6 +555,28 @@ function updateBoardScores(userID, boardID, scores) {
       "#9eb50": "YScore",
       "#9eb51": "MScore",
       "#9eb52": "WScore"
+    }
+  }
+}
+
+
+function updateBoardTargets(userID, boardID, targets) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "ExpressionAttributeValues": {
+      ":9eb50": { "N": String(targets.YTarget) },
+      ":9eb51": { "N": String(targets.MTarget) },
+      ":9eb52": { "N": String(targets.WTarget) }
+    },
+    "ExpressionAttributeNames": {
+      "#9eb50": "YTarget",
+      "#9eb51": "MTarget",
+      "#9eb52": "WTarget"
     }
   }
 }
