@@ -7,6 +7,8 @@ module "dynamodb_table" {
   range_key                   = "SK"
   table_class                 = "STANDARD"
   deletion_protection_enabled = false
+  ttl_enabled                 = true
+  ttl_attribute_name          = "ExpiryDateTTL"
 
   attributes = [
     {

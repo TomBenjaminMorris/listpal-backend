@@ -91,7 +91,7 @@ module.exports.handler = async (event) => {
 
       //// UPDATE TASK DETAILS ////
       case "POST /task-details":
-        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK));
+        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL));
         break;
 
 
@@ -351,23 +351,25 @@ function updateTaskImportance(userID, taskID, isImportant) {
   }
 }
 
-function updateTaskDetails(userID, taskID, completedDate, expiryDate, GSI1SK) {
+function updateTaskDetails(userID, taskID, completedDate, expiryDate, GSI1SK, expiryDateTTL) {
   return {
     "TableName": tableName,
     "Key": {
       "PK": { "S": userID },
       "SK": { "S": taskID }
     },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
+    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52, #9eb53 = :9eb53",
     "ExpressionAttributeValues": {
       ":9eb50": { "S": GSI1SK },
       ":9eb51": { "S": completedDate },
-      ":9eb52": { "S": expiryDate }
+      ":9eb52": { "S": expiryDate },
+      ":9eb53": { "N": String(expiryDateTTL) }
     },
     "ExpressionAttributeNames": {
       "#9eb50": "GSI1-SK",
       "#9eb51": "CompletedDate",
-      "#9eb52": "ExpiryDate"
+      "#9eb52": "ExpiryDate",
+      "#9eb53": "ExpiryDateTTL"
     }
   }
 }
@@ -379,6 +381,7 @@ function addTask(userID, body) {
       "GSI1-SK": { "S": body.expiryDate },
       "SK": { "S": body.taskID },
       "ExpiryDate": { "S": body.expiryDate },
+      "ExpiryDateTTL": { "N": "0" },
       "GSI1-PK": { "S": body.boardID },
       "Description": { "S": body.description },
       "PK": { "S": userID },
