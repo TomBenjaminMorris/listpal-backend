@@ -1,0 +1,26 @@
+[
+  {
+    "WScore": 7,
+    "WTarget": 7,
+    "YTarget": 365,
+    "MTarget": 31,
+    "SK": "b#558657d3-e2e4-428b-ab95-54e2e0e1e0b2",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "MScore": 17,
+    "Board": "Personal Lists",
+    "EntityType": "Board",
+    "YScore": 335
+  },
+  {
+    "WScore": 5,
+    "WTarget": 5,
+    "YTarget": 240,
+    "MTarget": 20,
+    "SK": "b#a657e607-5a99-472a-88b8-806525943a40",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "MScore": 5,
+    "Board": "Work Lists",
+    "EntityType": "Board",
+    "YScore": 5
+  }
+]

@@ -4,7 +4,7 @@ const attr = dataTypes.AttributeValue
 import * as fs from 'node:fs';
 
 const dynamoTableName = 'ListPal-Dev';
-const importFile = './exports/ListPal-Dev-Test-Data-2024-08-17.json';
+const importFile = './exports/tmp';
 
 let rawdata = fs.readFileSync(importFile);
 let json_data = JSON.parse(rawdata);
