@@ -507,6 +507,8 @@ function addBoard(userID, body) {
       "WTarget": { "N": String(7) },
       "MTarget": { "N": String(31) },
       "YTarget": { "N": String(365) },
+      "GSI1-SK": { "S": body.boardID },
+      "GSI1-PK": { "S": "b#" },
     },
     "TableName": tableName
   }

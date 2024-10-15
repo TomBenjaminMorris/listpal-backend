@@ -19,16 +19,16 @@ module.exports.handler = async (event) => {
     }
     console.log("TTT frequency: ", frequency);
     
-    const allUsers = await query(allUsersQuery());
-    const data = allUsers && allUsers.Items.map((item) => {
+    const allBoards = await query(allBoardsQuery());
+    const data = allBoards && allBoards.Items.map((item) => {
       return unmarshall(item);
     });
     console.log("TTT data: ", JSON.stringify(data));
 
     let result = []
     try {
-      for (const user of data) {
-        const writeResult = await update(updateUserScores(user.PK, frequency));
+      for (const board of data) {
+        const writeResult = await update(updateBoardScores(board.PK, board.SK, frequency));
         result.push(writeResult)
       }
       console.log("TTT Successfully updated scores");
@@ -54,17 +54,17 @@ async function update(input) {
   return result
 }
 
-function allUsersQuery() {
+function allBoardsQuery() {
   return {
     "TableName": tableName,
     "IndexName": "GSI1",
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "PK",
+    "ProjectionExpression": "PK, SK",
     "ExpressionAttributeValues": {
-      ":cd420": { "S": "u#" },
-      ":cd421": { "S": "u#" }
+      ":cd420": { "S": "b#" },
+      ":cd421": { "S": "b#" }
     },
     "ExpressionAttributeNames": {
       "#cd420": "GSI1-PK",
@@ -73,12 +73,12 @@ function allUsersQuery() {
   }
 }
 
-function updateUserScores(userID, frequency) {
+function updateBoardScores(userID, boardID, frequency) {
   return {
     "TableName": tableName,
     "Key": {
       "PK": { "S": userID },
-      "SK": { "S": userID }
+      "SK": { "S": boardID }
     },
     "UpdateExpression": "SET #9eb52 = :9eb52",
     "ExpressionAttributeValues": {
