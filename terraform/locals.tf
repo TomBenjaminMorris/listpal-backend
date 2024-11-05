@@ -68,6 +68,10 @@ locals {
       route     = "POST /rename-board"
       protected = true
     },
+    board_emoji = {
+      route     = "POST /board-emoji"
+      protected = true
+    },
     delete_board = {
       route     = "POST /delete-board"
       protected = true

@@ -131,6 +131,12 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// BOARD EMOJI ////
+      case "POST /board-emoji":
+        writeResult = await update(updateBoardEmoji(userID, body.boardID, body.emoji));
+        break;
+
+
       //// DELETE BOARD ////
       case "POST /delete-board":
         writeResult = await remove(deleteBoard(userID, body.boardID));
@@ -283,7 +289,7 @@ function boardsPerUserQuery(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget",
+    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "b#" }
@@ -511,6 +517,7 @@ function addBoard(userID, body) {
       "YTarget": { "N": String(365) },
       "GSI1-SK": { "S": body.boardID },
       "GSI1-PK": { "S": "b#" },
+      "Emoji": { "S": "🚀" },
     },
     "TableName": tableName
   }
@@ -531,6 +538,25 @@ function renameBoard(userID, boardID, name) {
     },
     "ExpressionAttributeNames": {
       "#6e6a0": "Board"
+    }
+  }
+}
+
+function updateBoardEmoji(userID, boardID, emoji) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": emoji
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "Emoji"
     }
   }
 }
