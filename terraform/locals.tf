@@ -72,6 +72,10 @@ locals {
       route     = "POST /board-emoji"
       protected = true
     },
+    board_category_order = {
+      route     = "POST /board-category-order"
+      protected = true
+    },
     delete_board = {
       route     = "POST /delete-board"
       protected = true

@@ -136,6 +136,12 @@ module.exports.handler = async (event) => {
         writeResult = await update(updateBoardEmoji(userID, body.boardID, body.emoji));
         break;
 
+      
+      //// BOARD CATEGORY ORDER ////
+      case "POST /board-category-order":
+        writeResult = await update(updateBoardCategoryOrder(userID, body.boardID, body.categoryOrder));
+        break;
+
 
       //// DELETE BOARD ////
       case "POST /delete-board":
@@ -289,7 +295,7 @@ function boardsPerUserQuery(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji",
+    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji, CategoryOrder",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "b#" }
@@ -518,6 +524,7 @@ function addBoard(userID, body) {
       "GSI1-SK": { "S": body.boardID },
       "GSI1-PK": { "S": "b#" },
       "Emoji": { "S": "🚀" },
+      "CategoryOrder": { "S": "[]" },
     },
     "TableName": tableName
   }
@@ -557,6 +564,25 @@ function updateBoardEmoji(userID, boardID, emoji) {
     },
     "ExpressionAttributeNames": {
       "#6e6a0": "Emoji"
+    }
+  }
+}
+
+function updateBoardCategoryOrder(userID, boardID, categoryOrder) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": boardID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": categoryOrder
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "CategoryOrder"
     }
   }
 }
