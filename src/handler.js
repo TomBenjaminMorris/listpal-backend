@@ -65,18 +65,6 @@ module.exports.handler = async (event) => {
         break;
 
 
-      //// UPDATE USER SCORES ////
-      // case "POST /user-scores":
-      //   writeResult = await update(updateUserScores(userID, body.scores));
-      //   break;
-
-
-      //// UPDATE USER TARGETS ////
-      // case "POST /user-targets":
-      //   writeResult = await update(updateUserTargets(userID, body.targets));
-      //   break;
-
-
       //// UPDATE USER THEME ////
       case "POST /user-theme":
         writeResult = await update(updateUserTheme(userID, body.theme));
@@ -448,48 +436,6 @@ function getRenameCommand(userID, taskID, category) {
     }
   }
 }
-
-// function updateUserScores(userID, scores) {
-//   return {
-//     "TableName": tableName,
-//     "Key": {
-//       "PK": { "S": userID },
-//       "SK": { "S": userID }
-//     },
-//     "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-//     "ExpressionAttributeValues": {
-//       ":9eb50": { "N": String(scores.YScore) },
-//       ":9eb51": { "N": String(scores.MScore) },
-//       ":9eb52": { "N": String(scores.WScore) }
-//     },
-//     "ExpressionAttributeNames": {
-//       "#9eb50": "YScore",
-//       "#9eb51": "MScore",
-//       "#9eb52": "WScore"
-//     }
-//   }
-// }
-
-// function updateUserTargets(userID, targets) {
-//   return {
-//     "TableName": tableName,
-//     "Key": {
-//       "PK": { "S": userID },
-//       "SK": { "S": userID }
-//     },
-//     "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-//     "ExpressionAttributeValues": {
-//       ":9eb50": { "N": String(targets.YTarget) },
-//       ":9eb51": { "N": String(targets.MTarget) },
-//       ":9eb52": { "N": String(targets.WTarget) }
-//     },
-//     "ExpressionAttributeNames": {
-//       "#9eb50": "YTarget",
-//       "#9eb51": "MTarget",
-//       "#9eb52": "WTarget"
-//     }
-//   }
-// }
 
 function updateUserTheme(userID, theme) {
   return {

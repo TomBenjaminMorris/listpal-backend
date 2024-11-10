@@ -5,12 +5,12 @@ data "archive_file" "api_lambda" {
 }
 
 module "lambda_function" {
-  source   = "terraform-aws-modules/lambda/aws"
-  version  = "~> 7.0"
-  for_each = local.lambda_routes
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 7.0"
+  # for_each = local.lambda_routes
 
-  function_name = "${lower(var.app)}_${each.key}_${lower(var.env)}"
-  # function_name                     = "listpal_${lower(var.env)}"
+  # function_name = "${lower(var.app)}_${each.key}_${lower(var.env)}"
+  function_name                     = "${lower(var.app)}_${lower(var.env)}"
   description                       = "ListPal API endpoint"
   handler                           = "handler.handler"
   runtime                           = "nodejs20.x"
