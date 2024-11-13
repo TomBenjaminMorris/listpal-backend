@@ -118,6 +118,12 @@ module.exports.handler = async (event) => {
         writeResult = await update(renameBoard(userID, body.boardID, body.name));
         break;
 
+      
+      //// CARD EMOJI ////
+      case "POST /card-emoji":
+        writeResult = await updateCardEmoji(userID, body.taskIDs, body.emoji);
+        break;
+
 
       //// BOARD EMOJI ////
       case "POST /board-emoji":
@@ -433,6 +439,38 @@ function getRenameCommand(userID, taskID, category) {
     },
     "ExpressionAttributeNames": {
       "#6e6a0": "Category"
+    }
+  }
+}
+
+async function updateCardEmoji(userID, taskIDs, emoji) {
+  let result = []
+  try {
+    for (const id of taskIDs) {
+      const data = await update(getCardEmojiCommand(userID, id, emoji));
+      result.push(data)
+    }
+    return result
+  } catch (e) {
+    return "Batch update failed: " + e;
+  }
+}
+
+function getCardEmojiCommand(userID, taskID, emoji) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": taskID }
+    },
+    "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ExpressionAttributeValues": {
+      ":6e6a0": {
+        "S": emoji
+      }
+    },
+    "ExpressionAttributeNames": {
+      "#6e6a0": "Emoji"
     }
   }
 }

@@ -60,6 +60,10 @@ locals {
       route     = "POST /rename-board"
       protected = true
     },
+    card_emoji = {
+      route     = "POST /card-emoji"
+      protected = true
+    },
     board_emoji = {
       route     = "POST /board-emoji"
       protected = true
