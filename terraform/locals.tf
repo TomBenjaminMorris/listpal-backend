@@ -24,6 +24,10 @@ locals {
       route     = "GET /user"
       protected = true
     },
+    new_user = {
+      route     = "POST /new-user"
+      protected = false
+    },
     task_description = {
       route     = "POST /task-description"
       protected = true

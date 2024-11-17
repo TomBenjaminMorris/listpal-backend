@@ -10,10 +10,13 @@ module.exports.handler = async (event) => {
     let readResult, writeResult;
     const params = event.queryStringParameters;
     const body = event.body && JSON.parse(event['body']);
+    let userID = "";
     // console.log("TTT", JSON.stringify(body));
-    const token = event.headers.authorization;
-    const decoded = jwtDecode(token);
-    const userID = `u#${decoded.sub}`;
+    if (event.headers.authorization) {
+      const token = event.headers.authorization;
+      const decoded = jwtDecode(token);
+      userID = `u#${decoded.sub}`;
+    }
     let valid = false
 
     switch (event.routeKey) {
@@ -62,6 +65,12 @@ module.exports.handler = async (event) => {
       //// GET USER ////
       case "GET /user":
         readResult = await query(getUser(userID));
+        break;
+
+
+      //// ADD USER ////
+      case "POST /new-user":
+        writeResult = await add(addUser(body));
         break;
 
 
@@ -118,7 +127,7 @@ module.exports.handler = async (event) => {
         writeResult = await update(renameBoard(userID, body.boardID, body.name));
         break;
 
-      
+
       //// CARD EMOJI ////
       case "POST /card-emoji":
         writeResult = await updateCardEmoji(userID, body.taskIDs, body.emoji);
@@ -130,7 +139,7 @@ module.exports.handler = async (event) => {
         writeResult = await update(updateBoardEmoji(userID, body.boardID, body.emoji));
         break;
 
-      
+
       //// BOARD CATEGORY ORDER ////
       case "POST /board-category-order":
         writeResult = await update(updateBoardCategoryOrder(userID, body.boardID, body.categoryOrder));
@@ -307,7 +316,7 @@ function getUser(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
-    "ProjectionExpression": "WScore, YTarget, MTarget, WTarget, MScore, Theme, YScore",
+    "ProjectionExpression": "Theme",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": userID }
@@ -396,6 +405,7 @@ function addTask(userID, body) {
       "CompletedDate": { "S": body.completedDate },
       "Category": { "S": body.category },
       "EntityType": { "S": "Task" },
+      "Emoji": { "S": body.emoji },
     },
     "TableName": tableName
   }
@@ -621,5 +631,22 @@ function updateBoardTargets(userID, boardID, targets) {
       "#9eb51": "MTarget",
       "#9eb52": "WTarget"
     }
+  }
+}
+
+
+function addUser(body) {
+  return {
+    "Item": {
+      "SK": { "S": body.userID },
+      "PK": { "S": body.userID },
+      "Email": { "S": body.email },
+      "Name": { "S": body.name },
+      "EntityType": { "S": "User" },
+      "GSI1-SK": { "S": body.userID },
+      "GSI1-PK": { "S": "u#" },
+      "Theme": { "S": "purple-haze" },
+    },
+    "TableName": tableName
   }
 }
