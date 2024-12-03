@@ -71,6 +71,10 @@ module.exports.handler = async (event) => {
       //// ADD USER ////
       case "POST /new-user":
         writeResult = await add(addUser(body));
+        const boardBody = {userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
+        await add(addBoard(body.userID, boardBody));
+        const taskBody = {userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
+        await add(addTask(body.userID, taskBody));
         break;
 
 
