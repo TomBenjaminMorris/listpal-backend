@@ -93,13 +93,11 @@ locals {
   apigateway_routes = {
     for k, v in local.lambda_routes :
     "${v.route}" => {
-      authorization_type = v.protected ? "JWT" : "NONE"
-      authorizer_key     = v.protected ? "cognito" : ""
-      # authorization_scopes = v.protected ? ["aws.cognito.signin.user.admin"] : []
+      authorization_type   = v.protected ? "JWT" : "NONE"
+      authorizer_key       = v.protected ? "cognito" : ""
       authorization_scopes = v.protected ? ["openid"] : []
 
       integration = {
-        # uri = module.lambda_function[k].lambda_function_arn
         uri                    = module.lambda_function.lambda_function_arn
         payload_format_version = "2.0"
       }
