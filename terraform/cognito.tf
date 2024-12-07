@@ -20,6 +20,10 @@ resource "aws_cognito_user_pool" "this" {
   username_configuration {
     case_sensitive = false
   }
+
+  lambda_config {
+    post_confirmation = module.sign_up_lambda_function.lambda_function_arn
+  }
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
