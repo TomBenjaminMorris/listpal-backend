@@ -15,3 +15,9 @@ variable "domain_name" {
   description = "The root domain name of the api"
   default     = "vinsp.in"
 }
+
+variable "root_domain_zone" {
+  type        = string
+  description = "The root domain name for the website."
+  default     = "vinsp.in"
+}

@@ -26,9 +26,12 @@ resource "aws_cognito_user_pool" "this" {
   }
 }
 
-resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${lower(var.app)}-${lower(var.env)}"
-  user_pool_id = aws_cognito_user_pool.this.id
+resource "aws_cognito_user_pool_domain" "custom_domain" {
+  domain          = "auth.listpal.dev.${var.domain_name}"
+  user_pool_id    = aws_cognito_user_pool.this.id
+  certificate_arn = aws_acm_certificate.login_cert.arn
+  # CURRENTLY I NEED TO ENABLE THE NEW MANAGED LOGIN IN THE AWS CONSOLE AFTER THIS RESOURCE IS CREATED:
+  # https://eu-west-2.console.aws.amazon.com/cognito/v2/idp/user-pools/eu-west-2_CwBCZpR9j/branding/domain?region=eu-west-2
 }
 
 resource "aws_cognito_user_pool_client" "userpool_client" {
