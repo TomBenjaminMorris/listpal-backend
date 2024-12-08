@@ -5,11 +5,8 @@ data "archive_file" "api_lambda" {
 }
 
 module "lambda_function" {
-  source  = "terraform-aws-modules/lambda/aws"
-  version = "~> 7.0"
-  # for_each = local.lambda_routes
-
-  # function_name = "${lower(var.app)}_${each.key}_${lower(var.env)}"
+  source                            = "terraform-aws-modules/lambda/aws"
+  version                           = "~> 7.0"
   function_name                     = "${lower(var.app)}_${lower(var.env)}"
   description                       = "ListPal API endpoint"
   handler                           = "handler.handler"
@@ -18,10 +15,8 @@ module "lambda_function" {
   local_existing_package            = "${path.module}/../src.zip"
   cloudwatch_logs_retention_in_days = 1
   publish                           = true
-  # create_current_version_allowed_triggers = false
-
-  attach_policy_json = true
-  policy_json        = <<-EOT
+  attach_policy_json                = true
+  policy_json                       = <<-EOT
     {
         "Version": "2012-10-17",
         "Statement": [

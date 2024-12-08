@@ -20,22 +20,28 @@ resource "aws_cognito_user_pool" "this" {
   username_configuration {
     case_sensitive = false
   }
+
+  lambda_config {
+    post_confirmation = module.sign_up_lambda_function.lambda_function_arn
+  }
 }
 
-resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${lower(var.app)}-${lower(var.env)}"
-  user_pool_id = aws_cognito_user_pool.this.id
+resource "aws_cognito_user_pool_domain" "custom_domain" {
+  domain          = "auth.listpal.dev.${var.domain_name}"
+  user_pool_id    = aws_cognito_user_pool.this.id
+  certificate_arn = aws_acm_certificate.login_cert.arn
+  # CURRENTLY I NEED TO ENABLE THE NEW MANAGED LOGIN IN THE AWS CONSOLE AFTER THIS RESOURCE IS CREATED:
+  # https://eu-west-2.console.aws.amazon.com/cognito/v2/idp/user-pools/eu-west-2_CwBCZpR9j/branding/domain?region=eu-west-2
 }
 
 resource "aws_cognito_user_pool_client" "userpool_client" {
-  name         = "client"
-  user_pool_id = aws_cognito_user_pool.this.id
-  # This will need to be updated to include the real listpal endpoint once deployed
-  callback_urls                        = ["https://example.com", "https://localhost", "http://localhost"]
+  name                                 = "client"
+  user_pool_id                         = aws_cognito_user_pool.this.id
+  callback_urls                        = ["http://localhost:5173/redirect", "https://listpal.dev.vinsp.in/redirect"]
   supported_identity_providers         = ["COGNITO"]
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["aws.cognito.signin.user.admin"]
+  allowed_oauth_scopes                 = ["openid"]
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_PASSWORD_AUTH",
