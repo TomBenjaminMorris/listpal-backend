@@ -99,18 +99,30 @@ module.exports.handler = async (event) => {
 
       //// UPDATE TASK CHECKED ////
       case "POST /task-checked":
-        let writeResultMulti = []
-        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
-        writeResultMulti.push(writeResult)
-        if (body.checked) {
-          writeResult = await add(addReportTask(userID, body));
-          writeResultMulti.push(writeResult)
-        } else {
-          writeResult = await remove(deleteReportTask(body.taskID));
-          writeResultMulti.push(writeResult)
+        try {
+          const writeResultMulti = [];
+          // Update task details
+          const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
+          writeResultMulti.push(await update(updateResult));
+          // Conditionally add or remove the report task based on the 'checked' value
+          if (body.checked) {
+            const addResult = addReportTask(userID, body);
+            writeResultMulti.push(await add(addResult));
+          } else {
+            const deleteResult = deleteReportTask(body.taskID);
+            writeResultMulti.push(await remove(deleteResult));
+          }
+          // Wait for all operations to complete concurrently
+          const results = await Promise.all(writeResultMulti);
+          // Set the final result if needed
+          writeResult = results;
+        } catch (error) {
+          console.error("Error updating task checked:", error);
+          // Handle the error (e.g., return a meaningful error message or re-throw)
+          writeResult = { error: "Task update failed", details: error.message };
         }
-        writeResult = writeResultMulti
         break;
+
 
 
       //// UPDATE TASK IMPORTANCE ////

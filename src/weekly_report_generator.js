@@ -41,7 +41,7 @@ module.exports.handler = async (event) => {
 
     const result = await Promise.all(
       Object.keys(groupedData).map(async (userID) => {
-        const writeResult = await addReportEntry(userID, userCounts[userID], summary);
+        const writeResult = await add(addReportEntry(userID, userCounts[userID], summary));
         return writeResult;
       })
     );
@@ -148,7 +148,7 @@ const getAISummary = async (llmResult) => {
     ],
     response_format: zodResponseFormat(SummariesFormat, "summaries")
   });
-  return completion.choices[0].message.parsed.summaries;
+  return JSON.stringify(completion.choices[0].message.parsed)
 };
 
 const countTasksPerUser = (groupedData) => {
