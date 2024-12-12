@@ -4,6 +4,7 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
+const reportTableName = "ListPal-" + process.env.Env + "-Reports";
 
 module.exports.handler = async (event) => {
   try {
@@ -71,9 +72,9 @@ module.exports.handler = async (event) => {
       //// ADD USER ////
       case "POST /new-user":
         writeResult = await add(addUser(body));
-        const boardBody = {userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
+        const boardBody = { userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
         await add(addBoard(body.userID, boardBody));
-        const taskBody = {userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
+        const taskBody = { userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
         await add(addTask(body.userID, taskBody));
         break;
 
@@ -93,6 +94,22 @@ module.exports.handler = async (event) => {
       //// UPDATE TASK DETAILS ////
       case "POST /task-details":
         writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
+        break;
+
+
+      //// UPDATE TASK CHECKED ////
+      case "POST /task-checked":
+        let writeResultMulti = []
+        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
+        writeResultMulti.push(writeResult)
+        if (body.checked) {
+          writeResult = await add(addReportTask(userID, body));
+          writeResultMulti.push(writeResult)
+        } else {
+          writeResult = await remove(deleteReportTask(body.taskID));
+          writeResultMulti.push(writeResult)
+        }
+        writeResult = writeResultMulti
         break;
 
 
@@ -415,11 +432,37 @@ function addTask(userID, body) {
   }
 }
 
+function addReportTask(userID, body) {
+  return {
+    "Item": {
+      "PK": { "S": "t#" },
+      "SK": { "S": body.taskID },
+      "ExpiryDateTTL": { "N": "0" },
+      "Description": { "S": body.description },
+      "UserID": { "S": userID },
+      "Category": { "S": body.category },
+      "EntityType": { "S": "Task" },
+      "Emoji": { "S": body.emoji },
+    },
+    "TableName": reportTableName
+  }
+}
+
 function deleteTask(userID, taskID) {
   return {
     "TableName": tableName,
     "Key": {
       "PK": { "S": userID },
+      "SK": { "S": taskID }
+    }
+  }
+}
+
+function deleteReportTask(taskID) {
+  return {
+    "TableName": reportTableName,
+    "Key": {
+      "PK": { "S": "t#" },
       "SK": { "S": taskID }
     }
   }
