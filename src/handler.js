@@ -68,6 +68,12 @@ module.exports.handler = async (event) => {
         readResult = await query(getUser(userID));
         break;
 
+      
+      //// GET WEEKLY REPORTS ////
+      case "GET /weekly-reports":
+        readResult = await query(getReports(userID));
+        break;
+
 
       //// ADD USER ////
       case "POST /new-user":
@@ -78,6 +84,38 @@ module.exports.handler = async (event) => {
         await add(addTask(body.userID, taskBody));
         break;
 
+
+      // //// ADD USER ////
+      // case "POST /new-user":
+      //   try {
+      //     const { userID } = body;
+      //     // Add user to the database
+      //     const userResult = addUser(body);
+      //     // Prepare board and task data
+      //     const boardBody = { userID, boardName: "Demo Board", boardID: `b#${userID}` };
+      //     const taskBody = {
+      //       userID,
+      //       createdDate: "nil",
+      //       expiryDate: "nil",
+      //       taskID: `t#${userID}`,
+      //       description: "Start creating some new tasks!",
+      //       completedDate: "nil",
+      //       category: "Welcome",
+      //       emoji: "✅",
+      //       boardID: `b#${userID}`
+      //     };
+      //     // Run all operations concurrently
+      //     const results = await Promise.all([
+      //       add(userResult),  // Add user
+      //       add(addBoard(userID, boardBody)),  // Add board
+      //       add(addTask(userID, taskBody))  // Add task
+      //     ]);
+      //   } catch (error) {
+      //     console.error("Error adding user, board, or task:", error);
+      //     // Handle error response if necessary
+      //     writeResult = { error: "Failed to add user, board, or task", details: error.message };
+      //   }
+      //   break;
 
       //// UPDATE USER THEME ////
       case "POST /user-theme":
@@ -353,6 +391,24 @@ function getUser(userID) {
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": userID }
+    },
+    "ExpressionAttributeNames": {
+      "#cd420": "PK",
+      "#cd421": "SK"
+    }
+  }
+}
+
+function getReports(userID) {
+  return {
+    "TableName": reportTableName,
+    "ScanIndexForward": true,
+    "ConsistentRead": false,
+    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
+    "ProjectionExpression": "SK, Summary, Score",
+    "ExpressionAttributeValues": {
+      ":cd420": { "S": userID },
+      ":cd421": { "S": "rl#" }
     },
     "ExpressionAttributeNames": {
       "#cd420": "PK",

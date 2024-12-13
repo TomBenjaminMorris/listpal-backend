@@ -1,46 +1,37 @@
-# locals {
-#   weekly_report_crons = {
-#     weekly = {
-#       schedule_expression = "cron(0 0 ? * MON *)"
-#       description         = "Fires every Monday"
-#     },
-#   }
+locals {
+  weekly_report_cron = {
+    schedule_expression = "cron(0 0 ? * MON *)"
+    description         = "Fires every Monday"
+  }
 
-#   weekly_report_allowed_triggers = {
-#     for k, v in local.weekly_report_crons :
-#     "AllowExecutionFromCloudWatch${title(k)}" => {
-#       principal  = "events.amazonaws.com"
-#       source_arn = aws_cloudwatch_event_rule.weekly_report[k].arn
-#     }
-#   }
-# }
+  weekly_report_allowed_triggers = {
+    "AllowExecutionFromCloudWatchWeekly" : {
+      principal  = "events.amazonaws.com"
+      source_arn = aws_cloudwatch_event_rule.weekly_report.arn
+    }
+  }
+}
 
-# resource "aws_cloudwatch_event_rule" "weekly_report" {
-#   for_each = local.crons
+resource "aws_cloudwatch_event_rule" "weekly_report" {
+  name                = "${lower(var.app)}_weekly_report"
+  description         = local.weekly_report_cron.description
+  schedule_expression = local.weekly_report_cron.schedule_expression
+}
 
-#   name                = "${lower(var.app)}_${each.key}_score_reset"
-#   description         = each.value.description
-#   schedule_expression = each.value.schedule_expression
-# }
+resource "aws_cloudwatch_event_target" "weekly_report_trigger_lambda_on_schedule" {
+  depends_on = [aws_cloudwatch_event_rule.weekly_report]
+  rule       = aws_cloudwatch_event_rule.weekly_report.name
+  target_id  = "lambda"
+  arn        = module.lambda_function_weekly_report.lambda_function_arn
+}
 
-# resource "aws_cloudwatch_event_target" "trigger_lambda_on_schedule" {
-#   for_each = local.crons
-
-#   depends_on = [aws_cloudwatch_event_rule.weekly_report]
-#   rule       = aws_cloudwatch_event_rule.weekly_report[each.key].name
-#   target_id  = "lambda"
-#   arn        = module.lambda_function_reset.lambda_function_arn
-# }
-
-# resource "aws_lambda_permission" "allow_cloudwatch_to_call_split_lambda" {
-#   for_each = local.crons
-
-#   statement_id  = "AllowExecutionFromCloudWatch${title(each.key)}"
-#   action        = "lambda:InvokeFunction"
-#   function_name = module.lambda_function_reset.lambda_function_name
-#   principal     = "events.amazonaws.com"
-#   source_arn    = aws_cloudwatch_event_rule.weekly_report[each.key].arn
-# }
+resource "aws_lambda_permission" "weekly_report_allow_cloudwatch_to_call_split_lambda" {
+  statement_id  = "AllowExecutionFromCloudWatchWeekly"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_function_weekly_report.lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.weekly_report.arn
+}
 
 module "lambda_function_weekly_report" {
   source  = "terraform-aws-modules/lambda/aws"
@@ -81,6 +72,6 @@ module "lambda_function_weekly_report" {
     OPENAI_API_KEY = var.openai_api_key
   }
 
-  # allowed_triggers = local.weekly_report_allowed_triggers
-  tags = local.tags
+  allowed_triggers = local.weekly_report_allowed_triggers
+  tags             = local.tags
 }

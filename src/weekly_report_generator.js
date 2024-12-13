@@ -92,7 +92,8 @@ function addReportEntry(userID, score, summary) {
       SK: { S: "rl#" + uuidv4() },
       Score: { N: String(score) },
       Summary: { S: summary },
-      EntityType: { S: "ReportLine" }
+      EntityType: { S: "ReportLine" },
+      ExpiryDateTTL: { "N": String(getNextMondayTimestamp()) },
     },
     TableName: tableName
   };
@@ -157,3 +158,9 @@ const countTasksPerUser = (groupedData) => {
     return acc;
   }, {});
 };
+
+function getNextMondayTimestamp() {
+  var d = new Date();
+  d.setDate(d.getDate() + (((1 + 7 - d.getDay()) % 7) || 7));
+  return Math.floor(d / 1000) + 3600;
+}
