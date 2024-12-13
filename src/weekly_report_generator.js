@@ -94,6 +94,7 @@ function addReportEntry(userID, score, summary) {
       Summary: { S: summary },
       EntityType: { S: "ReportLine" },
       ExpiryDateTTL: { "N": String(getNextMondayTimestamp()) },
+      WOTY: { "N": String(getCurrentWeekOfYear()) }
     },
     TableName: tableName
   };
@@ -163,4 +164,15 @@ function getNextMondayTimestamp() {
   var d = new Date();
   d.setDate(d.getDate() + (((1 + 7 - d.getDay()) % 7) || 7));
   return Math.floor(d / 1000) + 3600;
+}
+
+function getCurrentWeekOfYear() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const daysSinceStartOfYear = Math.floor((now - startOfYear) / (1000 * 60 * 60 * 24));
+  
+  // ISO 8601 weeks start on Monday, so we need to adjust accordingly
+  const weekNumber = Math.ceil((daysSinceStartOfYear + 1) / 7); // +1 to adjust for 1st day of the year
+  
+  return weekNumber;
 }

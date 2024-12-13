@@ -405,7 +405,7 @@ function getReports(userID) {
     "ScanIndexForward": true,
     "ConsistentRead": false,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Summary, Score",
+    "ProjectionExpression": "SK, Summary, Score, WOTY",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "rl#" }
