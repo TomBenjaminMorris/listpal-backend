@@ -68,7 +68,7 @@ module.exports.handler = async (event) => {
         readResult = await query(getUser(userID));
         break;
 
-      
+
       //// GET WEEKLY REPORTS ////
       case "GET /weekly-reports":
         readResult = await query(getReports(userID));
@@ -511,9 +511,16 @@ function addReportTask(userID, body) {
       "Category": { "S": body.category },
       "EntityType": { "S": "Task" },
       "Emoji": { "S": body.emoji },
+      "ExpiryDateTTL": { "N": String(getNextMondayTimestamp()) },
     },
     "TableName": reportTableName
   }
+}
+
+function getNextMondayTimestamp() {
+  var d = new Date();
+  d.setDate(d.getDate() + (((1 + 7 - d.getDay()) % 7) || 7));
+  return Math.floor(d / 1000) + 3600;
 }
 
 function deleteTask(userID, taskID) {
