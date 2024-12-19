@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-ssm": "^3.714.0",
     "@aws-sdk/util-dynamodb": "^3.616.0",
     "jwt-decode": "^4.0.0",
     "openai": "^4.76.1",

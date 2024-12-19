@@ -26,7 +26,7 @@ locals {
 resource "aws_cloudwatch_event_rule" "score_reset" {
   for_each = local.crons
 
-  name                = "${lower(var.app)}_${each.key}_score_reset"
+  name                = "${lower(var.app)}_${each.key}_score_reset_${lower(var.env)}"
   description         = each.value.description
   schedule_expression = each.value.schedule_expression
 }

@@ -23,6 +23,7 @@ variable "root_domain_zone" {
 }
 
 variable "openai_api_key" {
-  type    = string
-  default = "example-key"
+  type      = string
+  default   = "example-key"
+  sensitive = true
 }

@@ -1,19 +1,54 @@
 locals {
+  # Cron schedule and description for weekly report
   weekly_report_cron = {
     schedule_expression = "cron(0 0 ? * MON *)"
     description         = "Fires every Monday"
   }
 
+  # Lambda function environment variables
+  lambda_env_vars = {
+    Env                 = var.env,
+    OPENAI_API_KEY_PATH = aws_ssm_parameter.openai_api_key.name
+  }
+
+  # Allowed triggers for the Lambda function
   weekly_report_allowed_triggers = {
-    "AllowExecutionFromCloudWatchWeekly" : {
+    "AllowExecutionFromCloudWatchWeekly" = {
       principal  = "events.amazonaws.com"
       source_arn = aws_cloudwatch_event_rule.weekly_report.arn
     }
   }
+
+  # Lambda execution policy
+  lambda_execution_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DescribeStream",
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:ListStreams",
+          "dynamodb:Query",
+          "dynamodb:PutItem"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 resource "aws_cloudwatch_event_rule" "weekly_report" {
-  name                = "${lower(var.app)}_weekly_report"
+  name                = "${lower(var.app)}_weekly_report_${lower(var.env)}"
   description         = local.weekly_report_cron.description
   schedule_expression = local.weekly_report_cron.schedule_expression
 }
@@ -47,31 +82,17 @@ module "lambda_function_weekly_report" {
   publish                           = true
   attach_policy_json                = true
   timeout                           = 20
-  policy_json                       = <<-EOT
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "dynamodb:DescribeStream",
-                    "dynamodb:GetRecords",
-                    "dynamodb:GetShardIterator",
-                    "dynamodb:ListStreams",
-                    "dynamodb:Query",
-                    "dynamodb:PutItem"
-                ],
-                "Resource": "*"
-            }
-        ]
-    }
-  EOT
+  policy_json                       = local.lambda_execution_policy
+  environment_variables             = local.lambda_env_vars
+  allowed_triggers                  = local.weekly_report_allowed_triggers
+  tags                              = local.tags
+}
 
-  environment_variables = {
-    Env            = var.env,
-    OPENAI_API_KEY = var.openai_api_key
-  }
-
-  allowed_triggers = local.weekly_report_allowed_triggers
-  tags             = local.tags
+# Create the parameter in Parameter Store
+resource "aws_ssm_parameter" "openai_api_key" {
+  name        = "/listpal/${lower(var.env)}/openai_api_key"
+  description = "API Key for OpenAI"
+  type        = "SecureString"
+  value       = var.openai_api_key
+  tags        = local.tags
 }
