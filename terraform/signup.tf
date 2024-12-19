@@ -2,7 +2,7 @@ module "sign_up_lambda_function" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name                     = "${lower(var.app)}_${lower(var.env)}_sign_up"
+  function_name                     = "${lower(var.app)}_sign_up_${lower(var.env)}"
   description                       = "ListPal Sign-Up Function"
   handler                           = "sign_up.handler"
   runtime                           = "nodejs20.x"

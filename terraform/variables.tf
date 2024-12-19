@@ -21,3 +21,9 @@ variable "root_domain_zone" {
   description = "The root domain name for the website."
   default     = "vinsp.in"
 }
+
+variable "openai_api_key" {
+  type      = string
+  default   = "example-key"
+  sensitive = true
+}

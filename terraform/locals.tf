@@ -24,6 +24,10 @@ locals {
       route     = "GET /user"
       protected = true
     },
+    weekly_reports = {
+      route     = "GET /weekly-reports"
+      protected = true
+    },
     new_user = {
       route     = "POST /new-user"
       protected = false
@@ -34,6 +38,10 @@ locals {
     },
     task_details = {
       route     = "POST /task-details"
+      protected = true
+    },
+    task_checked = {
+      route     = "POST /task-checked"
       protected = true
     },
     task_important = {

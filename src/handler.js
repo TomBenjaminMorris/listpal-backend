@@ -4,6 +4,7 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
+const reportTableName = "ListPal-" + process.env.Env + "-Reports";
 
 module.exports.handler = async (event) => {
   try {
@@ -68,15 +69,53 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// GET WEEKLY REPORTS ////
+      case "GET /weekly-reports":
+        readResult = await query(getReports(userID));
+        break;
+
+
       //// ADD USER ////
       case "POST /new-user":
         writeResult = await add(addUser(body));
-        const boardBody = {userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
+        const boardBody = { userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
         await add(addBoard(body.userID, boardBody));
-        const taskBody = {userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
+        const taskBody = { userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
         await add(addTask(body.userID, taskBody));
         break;
 
+
+      // //// ADD USER ////
+      // case "POST /new-user":
+      //   try {
+      //     const { userID } = body;
+      //     // Add user to the database
+      //     const userResult = addUser(body);
+      //     // Prepare board and task data
+      //     const boardBody = { userID, boardName: "Demo Board", boardID: `b#${userID}` };
+      //     const taskBody = {
+      //       userID,
+      //       createdDate: "nil",
+      //       expiryDate: "nil",
+      //       taskID: `t#${userID}`,
+      //       description: "Start creating some new tasks!",
+      //       completedDate: "nil",
+      //       category: "Welcome",
+      //       emoji: "✅",
+      //       boardID: `b#${userID}`
+      //     };
+      //     // Run all operations concurrently
+      //     const results = await Promise.all([
+      //       add(userResult),  // Add user
+      //       add(addBoard(userID, boardBody)),  // Add board
+      //       add(addTask(userID, taskBody))  // Add task
+      //     ]);
+      //   } catch (error) {
+      //     console.error("Error adding user, board, or task:", error);
+      //     // Handle error response if necessary
+      //     writeResult = { error: "Failed to add user, board, or task", details: error.message };
+      //   }
+      //   break;
 
       //// UPDATE USER THEME ////
       case "POST /user-theme":
@@ -94,6 +133,34 @@ module.exports.handler = async (event) => {
       case "POST /task-details":
         writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
         break;
+
+
+      //// UPDATE TASK CHECKED ////
+      case "POST /task-checked":
+        try {
+          const writeResultMulti = [];
+          // Update task details
+          const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
+          writeResultMulti.push(await update(updateResult));
+          // Conditionally add or remove the report task based on the 'checked' value
+          if (body.checked) {
+            const addResult = addReportTask(userID, body);
+            writeResultMulti.push(await add(addResult));
+          } else {
+            const deleteResult = deleteReportTask(body.taskID);
+            writeResultMulti.push(await remove(deleteResult));
+          }
+          // Wait for all operations to complete concurrently
+          const results = await Promise.all(writeResultMulti);
+          // Set the final result if needed
+          writeResult = results;
+        } catch (error) {
+          console.error("Error updating task checked:", error);
+          // Handle the error (e.g., return a meaningful error message or re-throw)
+          writeResult = { error: "Task update failed", details: error.message };
+        }
+        break;
+
 
 
       //// UPDATE TASK IMPORTANCE ////
@@ -332,6 +399,24 @@ function getUser(userID) {
   }
 }
 
+function getReports(userID) {
+  return {
+    "TableName": reportTableName,
+    "ScanIndexForward": true,
+    "ConsistentRead": false,
+    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
+    "ProjectionExpression": "SK, Summary, Score, WOTY",
+    "ExpressionAttributeValues": {
+      ":cd420": { "S": userID },
+      ":cd421": { "S": "rl#" }
+    },
+    "ExpressionAttributeNames": {
+      "#cd420": "PK",
+      "#cd421": "SK"
+    }
+  }
+}
+
 function updateTaskDescription(userID, taskID, description) {
   return {
     "TableName": tableName,
@@ -415,11 +500,44 @@ function addTask(userID, body) {
   }
 }
 
+function addReportTask(userID, body) {
+  return {
+    "Item": {
+      "PK": { "S": "t#" },
+      "SK": { "S": body.taskID },
+      "ExpiryDateTTL": { "N": "0" },
+      "Description": { "S": body.description },
+      "UserID": { "S": userID },
+      "Category": { "S": body.category },
+      "EntityType": { "S": "Task" },
+      "Emoji": { "S": body.emoji },
+      "ExpiryDateTTL": { "N": String(getNextMondayTimestamp()) },
+    },
+    "TableName": reportTableName
+  }
+}
+
+function getNextMondayTimestamp() {
+  var d = new Date();
+  d.setDate(d.getDate() + (((1 + 7 - d.getDay()) % 7) || 7));
+  return Math.floor(d / 1000) + 3600;
+}
+
 function deleteTask(userID, taskID) {
   return {
     "TableName": tableName,
     "Key": {
       "PK": { "S": userID },
+      "SK": { "S": taskID }
+    }
+  }
+}
+
+function deleteReportTask(taskID) {
+  return {
+    "TableName": reportTableName,
+    "Key": {
+      "PK": { "S": "t#" },
       "SK": { "S": taskID }
     }
   }
