@@ -16,7 +16,7 @@ const SummariesFormat = z.object({
   summaries: z.array(z.object({ category: z.string(), summary: z.string() })),
 });
 
-const openai = new OpenAI({ apiKey: "" }); // We'll initialize the API key later.
+const openai = new OpenAI({ apiKey: "" });
 
 async function fetchAPIKey() {
   try {
@@ -43,7 +43,6 @@ async function add(input) {
   return result;
 }
 
-// Get all report tasks
 async function getAllReportTasks() {
   const allTasks = await query(allTasksQuery());
   return allTasks.Items.map((item) => unmarshall(item));
@@ -75,13 +74,13 @@ function addReportEntry(userID, score, summary) {
       Score: { N: String(score) },
       Summary: { S: summary },
       EntityType: { S: "ReportLine" },
-      WOTY: { N: String(getCurrentWeekOfYear() - 1) }, // Week of the year - 1
+      WOTY: { N: String(getCurrentWeekOfYear() - 1) },
+      YearNum: { N: String(new Date().getFullYear()) },
     },
     TableName: tableName,
   };
 }
 
-// Utility function to count tasks per user
 const countTasksPerUser = (groupedData) => {
   return Object.keys(groupedData).reduce((acc, userID) => {
     acc[userID] = groupedData[userID].length;
@@ -90,10 +89,11 @@ const countTasksPerUser = (groupedData) => {
 };
 
 function getCurrentWeekOfYear() {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const daysSinceStartOfYear = Math.floor((now - startOfYear) / (1000 * 60 * 60 * 24));
-  const weekNumber = Math.ceil((daysSinceStartOfYear + 1) / 7); // +1 to adjust for 1st day of the year
+  const date = new Date();
+  const startOfYear = new Date(date.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date - startOfYear) / 86400000);
+  const dayOfWeek = (date.getDay() + 6) % 7;
+  const weekNumber = Math.ceil((dayOfYear + dayOfWeek + 1) / 7);
   return weekNumber;
 }
 
@@ -107,22 +107,15 @@ function groupTasksPerUser(taskData) {
 
 function convertTasksToLLM(groupedData) {
   const llmData = {};
-
-  // Group tasks by category
   Object.values(groupedData).forEach((tasks) => {
     tasks.forEach(({ Category, Description }) => {
       if (!llmData[Category]) llmData[Category] = [];
       llmData[Category].push(Description);
     });
   });
-
-  // Convert to a string format
-  return Object.entries(llmData)
-    .map(
-      ([category, descriptions]) =>
-        `Category: ${category}\n${descriptions.map((desc) => `* ${desc}`).join("\n")}\n`
-    )
-    .join("\n");
+  return Object.entries(llmData).map(([category, descriptions]) =>
+    `Category: ${category}\n${descriptions.map((desc) => `* ${desc}`).join("\n")}\n`
+  ).join("\n");
 }
 
 async function getAISummary(llmResult) {

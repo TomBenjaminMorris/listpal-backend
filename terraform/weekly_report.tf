@@ -93,6 +93,12 @@ resource "aws_ssm_parameter" "openai_api_key" {
   name        = "/listpal/${lower(var.env)}/openai_api_key"
   description = "API Key for OpenAI"
   type        = "SecureString"
-  value       = var.openai_api_key
+  value       = "placeholder"
   tags        = local.tags
+
+  lifecycle {
+    ignore_changes = [
+      value,
+    ]
+  }
 }
