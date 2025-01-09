@@ -75,6 +75,12 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// GET STATS ////
+      case "GET /stats":
+        readResult = await query(getStats(userID));
+        break;
+
+
       //// ADD USER ////
       case "POST /new-user":
         writeResult = await add(addUser(body));
@@ -407,6 +413,24 @@ function getReports(userID) {
     "Limit": 10,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
     "ProjectionExpression": "SK, Summary, Score, WOTY, YearNum",
+    "ExpressionAttributeValues": {
+      ":cd420": { "S": userID },
+      ":cd421": { "S": "rl#" }
+    },
+    "ExpressionAttributeNames": {
+      "#cd420": "PK",
+      "#cd421": "SK"
+    }
+  }
+}
+
+function getStats(userID) {
+  return {
+    "TableName": reportTableName,
+    "ScanIndexForward": true,
+    "ConsistentRead": false,
+    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
+    "ProjectionExpression": "SK, Score, WOTY, YearNum",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": "rl#" }
