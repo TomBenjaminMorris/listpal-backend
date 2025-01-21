@@ -1,8 +1,8 @@
 locals {
   # Cron schedule and description for weekly report
   weekly_report_cron = {
-    schedule_expression = "cron(0 3 ? * MON *)"
-    description         = "Fires every Monday at 3:00 AM"
+    schedule_expression = "cron(0 1 ? * MON *)"
+    description         = "Fires every Monday at 1:00 AM"
   }
 
   # Lambda function environment variables

@@ -1,0 +1,87 @@
+[
+  {
+    "UserID": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "Emoji": "🚢",
+    "ExpiryDateTTL": 1737974683,
+    "SK": "t#13bec25f-9589-4b88-a768-5ab4ece8c08d",
+    "Description": "Find out current helm-lib usage",
+    "PK": "t#",
+    "Category": "Helm-Library Replacement",
+    "EntityType": "Task"
+  },
+  {
+    "UserID": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "Emoji": "⚙️",
+    "ExpiryDateTTL": 1737971259,
+    "SK": "t#17f58e09-b235-4cea-99e9-bea58efaeca2",
+    "Description": "Request Glastonbury holiday dates",
+    "PK": "t#",
+    "Category": "General",
+    "EntityType": "Task"
+  },
+  {
+    "UserID": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "Emoji": "🚢",
+    "ExpiryDateTTL": 1737974680,
+    "SK": "t#22b53be0-5123-442d-9af1-ae0611b0d381",
+    "Description": "Interview current helm-lib contributors",
+    "PK": "t#",
+    "Category": "Helm-Library Replacement",
+    "EntityType": "Task"
+  },
+  {
+    "UserID": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "Emoji": "⚙️",
+    "ExpiryDateTTL": 1737971261,
+    "SK": "t#89341cc8-769a-4a12-8eaf-41ca2192841a",
+    "Description": "Request Norwegian cruse holiday dates",
+    "PK": "t#",
+    "Category": "General",
+    "EntityType": "Task"
+  },
+  {
+    "Score": 6,
+    "Summary": "{\"summaries\":[{\"category\":\"House/Flat\",\"summary\":\"You took a thorough look at the full surveyor's report, leaving no stone unturned in your quest for home knowledge. After that, you switched out the bedding, probably making your bed look like a cozy haven.\"},{\"category\":\"Personal\",\"summary\":\"You embarked on a mini art project by getting that Glastonbury poster and some other pictures framed at Christmas in Wakefield. Not to forget, you dove into the insightful pages of 'Surrounded By Idiots', wrapped it up with a write-up, and made a trip to the post office for those ascolour bits that just couldn't wait.\"}]}",
+    "WOTY": 1,
+    "YearNum": 2025,
+    "SK": "rl#3d036185-9d1e-47fe-979d-13cb09242ad8",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "ReportLine"
+  },
+  {
+    "Score": 13,
+    "Summary": "{\"summaries\":[{\"category\":\"Helm-Library Replacement\",\"summary\":\"You had a session with Tibor, diving deep into the requirements and clarifying your initial questions like a detective on a case. It felt great to get everything sorted out!\"},{\"category\":\"Health\",\"summary\":\"You managed to snag the consultation letter from Dr. Kaski, ticking that off your list like a pro. Plus, you stocked up on propanolol just in time for the festive season!\"},{\"category\":\"General\",\"summary\":\"You successfully got the *.dojo.tech certificate renewed, ensuring everything is up to date and secure. And let’s not forget the fun part—taking some board games in for a lively team afternoon!\"},{\"category\":\"Personal\",\"summary\":\"You wrapped Becki's Christmas presents with expert precision, adding that festive touch. You also squeezed in some personal reading, tackling ‘5am Club’ and 'The Psychology of Money,' while enjoying a post-work beer with Lewis and ordering some ascolour bits, all while sorting out that pesky ADTR ticket replacement.\"},{\"category\":\"DevOps\",\"summary\":\"You took some time to read through the Prompt Engineering document, adding another feather to your cap. Knowledge gained is power!\"},{\"category\":\"House/Flat\",\"summary\":\"You diligently read through the seller's documentation pack sent by the solicitors, making sure you were well-informed about your potential new abode. A step closer to that dream home!\"}]}",
+    "WOTY": 52,
+    "YearNum": 2024,
+    "SK": "rl#3d2fcf7e-899e-450d-8859-f2cdba39cf55",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "ReportLine"
+  },
+  {
+    "Score": 16,
+    "Summary": "{\"summaries\":[{\"category\":\"Personal\",\"summary\":\"You enjoyed a lively Social Squash evening at Tooting Leisure Centre, making new friends and showing off your skills on the court. You also managed to collect your cozy fleece from the post office and got your new jeans altered to perfection, ready to hit the town!\"},{\"category\":\"ListPal\",\"summary\":\"You tackled some serious coding challenges this week by combining all the loaders into one component, which was nothing short of a genius move. You also fixed a pesky task description update bug, learned why the projects board wasn't expanding fully, and experimented with styling that made the board look even sharper!\"},{\"category\":\"Helm-Library Replacement\",\"summary\":\"You had a fruitful meeting with Ell, diving deep into his thoughts and opinions on potential solutions. Following that, you created a structured document to showcase the outputs of your initial investigations into crossplane, helm, kustomize, and cdk8s, paving the way for future developments.\"},{\"category\":\"General\",\"summary\":\"You successfully requested a day off for that much-anticipated album recording, allowing your creative juices to flow freely. On top of that, you updated and merged all the security PRs into your repos, filled out Tibor's 'Take the Lead' survey, and even wrote up the Tilt STARE, feeling quite accomplished!\"},{\"category\":\"Health\",\"summary\":\"You made sure to take care of yourself by collecting your prescription from Boots, keeping your health in check. Every little step counted as you balanced your busy week!\"}]}",
+    "WOTY": 3,
+    "YearNum": 2025,
+    "SK": "rl#8f0cedce-a4f3-442b-a569-3600cfcc6444",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "ReportLine"
+  },
+  {
+    "Score": 10,
+    "Summary": "{\"summaries\":[{\"category\":\"Health\",\"summary\":\"You sent mum the latest migraine notes for printing, ensuring she had all the information at her fingertips. You also dove into research about the CBT therapist suggested by Dr. Kaski, ready to tackle those mental health hurdles.\"},{\"category\":\"ListPal\",\"summary\":\"You took a moment to fix the weekly report WOTY by subtracting one from the current week number, keeping everything on track. Plus, you securely stored the OpenAI API key in the secrets management store and kicked off the creation of AI summaries for your completed tasks – hello, weekly roundups!\"},{\"category\":\"House/Flat\",\"summary\":\"You organized a surveyor using your trusty previous communication channel, making sure no detail was missed. You also promptly paid the surveyor's invoice and followed up with the solicitor and estate agents to keep tabs on the current progress.\"},{\"category\":\"Finance\",\"summary\":\"You dived into 'The Psychology of Money,' soaking up insights and strategies to boost your financial wisdom. A little reading never hurts when it comes to understanding your cash flow!\"},{\"category\":\"Personal\",\"summary\":\"You took a step towards decluttering your closet by returning that Reiss shirt, making space for new finds. Fashion wins all around!\"}]}",
+    "WOTY": 51,
+    "YearNum": 2024,
+    "SK": "rl#b2ddb9ad-2026-409f-858b-eb795a14fe75",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "ReportLine"
+  },
+  {
+    "Score": 20,
+    "Summary": "{\"summaries\":[{\"category\":\"Helm-Library Replacement\",\"summary\":\"You sat down with Aaron to brainstorm some initial ideas and areas that would focus your research efforts. Those discussions surely sparked some interesting thoughts!\"},{\"category\":\"ListPal\",\"summary\":\"You went through all the pages and files, optimising the code with the help of ChatGPT and Claude, feeling like a coding wizard. Plus, you added a year to the ListPal Reports table and tackled the WOTY logic, all while making those cards dance with a fadeUp animation on a full board refresh!\"},{\"category\":\"Personal\",\"summary\":\"You strummed your guitar and learned a new song, channeling your inner rockstar. You also made important fashion choices, decided on new jeans, and prepped for your recording weekend by testing out your recording equipment!\"},{\"category\":\"Health\",\"summary\":\"You organised your first CBT session with Dr. Vogt, taking a proactive step towards mental wellness. Not to forget, you stocked up on caffeine shampoo and made sure to contact Dr. Florian Vogt with Dr. Kaski's consultation letter!\"},{\"category\":\"House/Flat\",\"summary\":\"You bravely took the new kettle back to get a replacement and made inquiries with the estate agents about various survey queries. With your solicitor's help, you raised the issues found in the documentation pack and survey, tackling those home concerns head-on!\"},{\"category\":\"Local Dev\",\"summary\":\"You documented the GCS helm chart usage steps, feeling like a true developer hero. On top of that, you updated and tested the new GCS helm-chart, confirming your status as a local dev champ!\"}]}",
+    "WOTY": 2,
+    "YearNum": 2025,
+    "SK": "rl#cce6987f-4d9e-4169-8131-a153eda71884",
+    "PK": "u#365202d4-0091-708b-eafe-0027f8ef9007",
+    "EntityType": "ReportLine"
+  }
+]

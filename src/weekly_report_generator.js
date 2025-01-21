@@ -74,7 +74,7 @@ function addReportEntry(userID, score, summary) {
       Score: { N: String(score) },
       Summary: { S: summary },
       EntityType: { S: "ReportLine" },
-      WOTY: { N: String(getCurrentWeekOfYear() - 1) },
+      WOTY: { N: String(getCurrentWeekOfYear()) },
       YearNum: { N: String(new Date().getFullYear()) },
     },
     TableName: tableName,
