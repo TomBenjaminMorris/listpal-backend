@@ -91,38 +91,6 @@ module.exports.handler = async (event) => {
         break;
 
 
-      // //// ADD USER ////
-      // case "POST /new-user":
-      //   try {
-      //     const { userID } = body;
-      //     // Add user to the database
-      //     const userResult = addUser(body);
-      //     // Prepare board and task data
-      //     const boardBody = { userID, boardName: "Demo Board", boardID: `b#${userID}` };
-      //     const taskBody = {
-      //       userID,
-      //       createdDate: "nil",
-      //       expiryDate: "nil",
-      //       taskID: `t#${userID}`,
-      //       description: "Start creating some new tasks!",
-      //       completedDate: "nil",
-      //       category: "Welcome",
-      //       emoji: "✅",
-      //       boardID: `b#${userID}`
-      //     };
-      //     // Run all operations concurrently
-      //     const results = await Promise.all([
-      //       add(userResult),  // Add user
-      //       add(addBoard(userID, boardBody)),  // Add board
-      //       add(addTask(userID, taskBody))  // Add task
-      //     ]);
-      //   } catch (error) {
-      //     console.error("Error adding user, board, or task:", error);
-      //     // Handle error response if necessary
-      //     writeResult = { error: "Failed to add user, board, or task", details: error.message };
-      //   }
-      //   break;
-
       //// UPDATE USER THEME ////
       case "POST /user-theme":
         writeResult = await update(updateUserTheme(userID, body.theme));
@@ -166,7 +134,6 @@ module.exports.handler = async (event) => {
           writeResult = { error: "Task update failed", details: error.message };
         }
         break;
-
 
 
       //// UPDATE TASK IMPORTANCE ////
@@ -225,8 +192,24 @@ module.exports.handler = async (event) => {
 
       //// DELETE BOARD ////
       case "POST /delete-board":
-        writeResult = await remove(deleteBoard(userID, body.boardID));
-        break;
+        valid = await verifyBoard(userID, body.boardID);
+        if (!valid) {
+          return {
+            error: "Requested board does not belong to the currently logged-in user"
+          };
+        }
+
+        try {
+          await deleteBoardTasks(userID, body.boardID);
+          const boardDeletionResult = await remove(deleteBoard(userID, body.boardID));
+          return boardDeletionResult;
+        } catch (error) {
+          console.error("Failed to delete board or tasks:", error);
+          return {
+            error: "Failed to delete board and/or tasks",
+            details: error.message
+          };
+        }
 
 
       //// UPDATE BOARD SCORES ////
@@ -738,6 +721,29 @@ function deleteBoard(userID, boardID) {
   }
 }
 
+async function deleteBoardTasks(userID, boardID) {
+  try {
+    const readResult = await query(activeTasksQuery(boardID));
+    console.log("Read tasks:", JSON.stringify(readResult));
+
+    if (!readResult.Items || readResult.Items.length === 0) {
+      console.log("No tasks found for board", boardID);
+      return;
+    }
+
+    const deletePromises = readResult.Items.map(task => {
+      return remove(deleteTask(userID, task.SK.S));
+    });
+
+    await Promise.all(deletePromises);
+    console.log("All tasks deleted successfully");
+  } catch (error) {
+    console.error("Error deleting tasks for board:", boardID, error);
+    throw new Error(`Batch update failed: ${error.message}`);
+  }
+}
+
+
 function updateBoardScores(userID, boardID, scores) {
   return {
     "TableName": tableName,
@@ -759,7 +765,6 @@ function updateBoardScores(userID, boardID, scores) {
   }
 }
 
-
 function updateBoardTargets(userID, boardID, targets) {
   return {
     "TableName": tableName,
@@ -780,7 +785,6 @@ function updateBoardTargets(userID, boardID, targets) {
     }
   }
 }
-
 
 function addUser(body) {
   return {
