@@ -36,6 +36,10 @@ locals {
       route     = "POST /new-user"
       protected = false
     },
+    task_sync = {
+      route     = "POST /task-sync"
+      protected = true
+    },
     task_description = {
       route     = "POST /task-description"
       protected = true

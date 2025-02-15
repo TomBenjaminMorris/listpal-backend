@@ -97,6 +97,23 @@ module.exports.handler = async (event) => {
         break;
 
 
+      //// SYNC TASK CHANGES ////
+      case "POST /task-sync":
+        try {
+          writeResult = await handleTaskSync(userID, body.task_actions);
+        } catch (error) {
+          console.error("Error during task synchronisation:", error);
+          return {
+            statusCode: 500,
+            body: JSON.stringify({
+              message: "An error occurred while syncing tasks.",
+              error: error.message || "Unknown error",
+            }),
+          };
+        }
+        break;
+
+
       //// UPDATE TASK DESCRIPTION ////
       case "POST /task-description":
         writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
@@ -242,6 +259,41 @@ module.exports.handler = async (event) => {
     console.log(error);
   }
 }
+
+
+async function handleTaskSync(userID, tasks) {
+  const promises = tasks.map(async (task_action) => {
+    let result;
+    const taskID = task_action.SK;
+    switch (task_action.Action) {
+      case "create":
+        result = await add(addTaskSync(userID, task_action));
+        return {
+          ...result,
+          action: "create",
+          taskId: taskID
+        };
+      case "delete":
+        result = await remove(deleteTask(userID, taskID));;
+        return {
+          ...result,
+          action: "delete",
+          taskId: taskID
+        };
+      case "update":
+        // result = await remove(deleteTask(userID, taskID));;
+        return {
+          ...result,
+          action: "update",
+          taskId: taskID
+        };
+      default:
+        return null;
+    }
+  });
+  return await Promise.all(promises);
+}
+
 
 async function verifyBoard(userID, boardID) {
   let returnVal = false
@@ -503,6 +555,27 @@ function addTask(userID, body) {
       "Category": { "S": body.category },
       "EntityType": { "S": "Task" },
       "Emoji": { "S": body.emoji },
+    },
+    "TableName": tableName
+  }
+}
+
+function addTaskSync(userID, body) {
+  return {
+    "Item": {
+      "CreatedDate": { "S": body.CreatedDate },
+      "GSI1-SK": { "S": body.ExpiryDate },
+      "SK": { "S": body.SK },
+      "ExpiryDate": { "S": "nil" },
+      "ExpiryDateTTL": { "N": "0" },
+      "GSI1-PK": { "S": body["GSI1-PK"] },
+      "GSI1-SK": { "S": "nil" },
+      "Description": { "S": body.Description },
+      "PK": { "S": userID },
+      "CompletedDate": { "S": "nil" },
+      "Category": { "S": body.Category },
+      "EntityType": { "S": "Task" },
+      "Emoji": { "S": body.Emoji },
     },
     "TableName": tableName
   }
