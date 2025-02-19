@@ -22,7 +22,7 @@ module.exports.handler = async (event) => {
 
     switch (event.routeKey) {
       //// GET ACTIVE TASKS ////
-      case "GET /active-tasks": // Modify to set current date
+      case "GET /active-tasks":
         valid = await verifyBoard(userID, params.boardID);
         if (!valid) {
           return {
@@ -34,7 +34,7 @@ module.exports.handler = async (event) => {
 
 
       //// GET EXPIRED TASKS ////
-      case "GET /expired-tasks": // Modify to set current date
+      case "GET /expired-tasks":
         valid = await verifyBoard(userID, params.boardID);
         if (!valid) {
           return {
@@ -231,7 +231,30 @@ module.exports.handler = async (event) => {
 
       //// UPDATE BOARD SCORES ////
       case "POST /board-scores":
-        writeResult = await update(updateBoardScores(userID, body.boardID, body.scores));
+        try {
+          const writeResultMulti = [];
+          // Update board scores details
+          const scoreResult = updateBoardScores(userID, body.boardID, body.scores);
+          writeResultMulti.push(await update(scoreResult));
+          // If a task is defined in the request
+          if (body.task) {
+            // Conditionally add or remove the report task based on the 'checked' value
+            if (body.task.checked) {
+              const addResult = addReportTask(userID, body.task);
+              writeResultMulti.push(await add(addResult));
+            } else {
+              const deleteResult = deleteReportTask(body.task.taskID);
+              writeResultMulti.push(await remove(deleteResult));
+            }
+          }
+          // Wait for all operations to complete concurrently
+          const results = await Promise.all(writeResultMulti);
+          // Set the final result if needed
+          writeResult = results;
+        } catch (error) {
+          console.error("Error updating scores or task reports:", error);
+          writeResult = { error: "Task/Score update failed", details: error.message };
+        }
         break;
 
 
@@ -250,8 +273,6 @@ module.exports.handler = async (event) => {
     });
 
     return {
-      // count: writeResult.Count,
-      // scannedCount: writeResult.ScannedCount,
       data: data ? data : writeResult
     }
 
@@ -261,27 +282,43 @@ module.exports.handler = async (event) => {
 }
 
 
+///////////////////// SYNC FUNCTIONALITY START /////////////////////
+async function initializeTaskValues(task) {
+  return {
+    ...task,
+    ExpiryDateTTL: task.ExpiryDateTTL || 0,
+    ExpiryDate: task.ExpiryDate || '',
+    Description: task.Description || '',
+    Category: task.Category || '',
+    'GSI1-SK': task['GSI1-SK'] || '',
+    CompletedDate: task.CompletedDate || '',
+    Important: task.Important || '',
+    Link: task.Link || ''
+  };
+}
+
 async function handleTaskSync(userID, tasks) {
   const promises = tasks.map(async (task_action) => {
     let result;
     const taskID = task_action.SK;
+    const initializedTask = await initializeTaskValues(task_action);
     switch (task_action.Action) {
       case "create":
-        result = await add(addTaskSync(userID, task_action));
+        result = await add(addTaskSync(userID, initializedTask));
         return {
           ...result,
           action: "create",
           taskId: taskID
         };
       case "delete":
-        result = await remove(deleteTask(userID, taskID));;
+        result = await remove(deleteTaskSync(userID, taskID));
         return {
           ...result,
           action: "delete",
           taskId: taskID
         };
       case "update":
-        // result = await remove(deleteTask(userID, taskID));;
+        result = await update(updateTaskSync(userID, initializedTask));
         return {
           ...result,
           action: "update",
@@ -293,6 +330,62 @@ async function handleTaskSync(userID, tasks) {
   });
   return await Promise.all(promises);
 }
+
+function updateTaskSync(userID, task) {
+  return {
+    TableName: tableName,
+    Key: {
+      PK: { "S": userID },
+      SK: { "S": task.SK }
+    },
+    UpdateExpression: "SET ExpiryDateTTL = :ttl, ExpiryDate = :expiry, Description = :desc, Category = :cat, #gsi1sk = :gsi1sk, CompletedDate = :completed, Important = :important, Link = :link",
+    ExpressionAttributeValues: {
+      ":ttl": { "N": String(task.ExpiryDateTTL) },
+      ":expiry": { "S": task.ExpiryDate },
+      ":desc": { "S": task.Description },
+      ":cat": { "S": task.Category },
+      ":gsi1sk": { "S": task['GSI1-SK'] },
+      ":completed": { "S": task.CompletedDate },
+      ":important": { "S": task.Important },
+      ":link": { "S": task.Link },
+    },
+    ExpressionAttributeNames: {
+      "#gsi1sk": "GSI1-SK"
+    }
+  };
+}
+
+function addTaskSync(userID, body) {
+  return {
+    "TableName": tableName,
+    "Item": {
+      "CreatedDate": { "S": body.CreatedDate },
+      "GSI1-SK": { "S": body.ExpiryDate },
+      "SK": { "S": body.SK },
+      "ExpiryDate": { "S": "nil" },
+      "ExpiryDateTTL": { "N": "0" },
+      "GSI1-PK": { "S": body["GSI1-PK"] },
+      "GSI1-SK": { "S": "nil" },
+      "Description": { "S": body.Description },
+      "PK": { "S": userID },
+      "CompletedDate": { "S": "nil" },
+      "Category": { "S": body.Category },
+      "EntityType": { "S": "Task" },
+      "Emoji": { "S": body.Emoji },
+    }
+  }
+}
+
+function deleteTaskSync(userID, taskID) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": taskID }
+    }
+  }
+}
+///////////////////// SYNC FUNCTIONALITY END /////////////////////
 
 
 async function verifyBoard(userID, boardID) {
@@ -336,10 +429,8 @@ function activeTasksQuery(boardID) {
     "ScanIndexForward": true,
     "IndexName": "GSI1",
     "KeyConditionExpression": "#c1490 = :c1490 And #c1491 >= :c1491",
-    // "ProjectionExpression": "SK, Description, Category, ExpiryDate",
     "ExpressionAttributeValues": {
       ":c1490": { "S": boardID },
-      // ":c1491": { "S": "1718751600000" }
       ":c1491": { "S": String(Date.now()) }
     },
     "ExpressionAttributeNames": {
@@ -358,7 +449,6 @@ function expiredTasksQuery(boardID) {
     "ProjectionExpression": "SK, Description, Category, ExpiryDate",
     "ExpressionAttributeValues": {
       ":c1490": { "S": boardID },
-      // ":c1491": { "S": "1718751600000" }
       ":c1491": { "S": String(Date.now()) }
     },
     "ExpressionAttributeNames": {
@@ -555,27 +645,6 @@ function addTask(userID, body) {
       "Category": { "S": body.category },
       "EntityType": { "S": "Task" },
       "Emoji": { "S": body.emoji },
-    },
-    "TableName": tableName
-  }
-}
-
-function addTaskSync(userID, body) {
-  return {
-    "Item": {
-      "CreatedDate": { "S": body.CreatedDate },
-      "GSI1-SK": { "S": body.ExpiryDate },
-      "SK": { "S": body.SK },
-      "ExpiryDate": { "S": "nil" },
-      "ExpiryDateTTL": { "N": "0" },
-      "GSI1-PK": { "S": body["GSI1-PK"] },
-      "GSI1-SK": { "S": "nil" },
-      "Description": { "S": body.Description },
-      "PK": { "S": userID },
-      "CompletedDate": { "S": "nil" },
-      "Category": { "S": body.Category },
-      "EntityType": { "S": "Task" },
-      "Emoji": { "S": body.Emoji },
     },
     "TableName": tableName
   }
