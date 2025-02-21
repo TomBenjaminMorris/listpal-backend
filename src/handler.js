@@ -115,60 +115,60 @@ module.exports.handler = async (event) => {
 
 
       //// UPDATE TASK DESCRIPTION ////
-      case "POST /task-description":
-        writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
-        break;
+      // case "POST /task-description":
+      //   writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
+      //   break;
 
 
       //// UPDATE TASK DETAILS ////
-      case "POST /task-details":
-        writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
-        break;
+      // case "POST /task-details":
+      //   writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
+      //   break;
 
 
       //// UPDATE TASK CHECKED ////
-      case "POST /task-checked":
-        try {
-          const writeResultMulti = [];
-          // Update task details
-          const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
-          writeResultMulti.push(await update(updateResult));
-          // Conditionally add or remove the report task based on the 'checked' value
-          if (body.checked) {
-            const addResult = addReportTask(userID, body);
-            writeResultMulti.push(await add(addResult));
-          } else {
-            const deleteResult = deleteReportTask(body.taskID);
-            writeResultMulti.push(await remove(deleteResult));
-          }
-          // Wait for all operations to complete concurrently
-          const results = await Promise.all(writeResultMulti);
-          // Set the final result if needed
-          writeResult = results;
-        } catch (error) {
-          console.error("Error updating task checked:", error);
-          // Handle the error (e.g., return a meaningful error message or re-throw)
-          writeResult = { error: "Task update failed", details: error.message };
-        }
-        break;
+      // case "POST /task-checked":
+      //   try {
+      //     const writeResultMulti = [];
+      //     // Update task details
+      //     const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
+      //     writeResultMulti.push(await update(updateResult));
+      //     // Conditionally add or remove the report task based on the 'checked' value
+      //     if (body.checked) {
+      //       const addResult = addReportTask(userID, body);
+      //       writeResultMulti.push(await add(addResult));
+      //     } else {
+      //       const deleteResult = deleteReportTask(body.taskID);
+      //       writeResultMulti.push(await remove(deleteResult));
+      //     }
+      //     // Wait for all operations to complete concurrently
+      //     const results = await Promise.all(writeResultMulti);
+      //     // Set the final result if needed
+      //     writeResult = results;
+      //   } catch (error) {
+      //     console.error("Error updating task checked:", error);
+      //     // Handle the error (e.g., return a meaningful error message or re-throw)
+      //     writeResult = { error: "Task update failed", details: error.message };
+      //   }
+      //   break;
 
 
       //// UPDATE TASK IMPORTANCE ////
-      case "POST /task-important":
-        writeResult = await update(updateTaskImportance(userID, body.taskID, body.isImportant));
-        break;
+      // case "POST /task-important":
+      //   writeResult = await update(updateTaskImportance(userID, body.taskID, body.isImportant));
+      //   break;
 
 
       //// ADD TASK ////
-      case "POST /new-task":
-        writeResult = await add(addTask(userID, body));
-        break;
+      // case "POST /new-task":
+      //   writeResult = await add(addTask(userID, body));
+      //   break;
 
 
       //// DELETE TASK ////
-      case "POST /delete-task":
-        writeResult = await remove(deleteTask(userID, body.taskID));
-        break;
+      // case "POST /delete-task":
+      //   writeResult = await remove(deleteTask(userID, body.taskID));
+      //   break;
 
 
       //// RENAME CATEGORY ////
