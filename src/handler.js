@@ -34,21 +34,21 @@ module.exports.handler = async (event) => {
 
 
       //// GET EXPIRED TASKS ////
-      case "GET /expired-tasks":
-        valid = await verifyBoard(userID, params.boardID);
-        if (!valid) {
-          return {
-            error: "requested board does not belong to the currently logged in user"
-          }
-        }
-        readResult = await query(expiredTasksQuery(params.boardID));
-        break;
+      // case "GET /expired-tasks":
+      //   valid = await verifyBoard(userID, params.boardID);
+      //   if (!valid) {
+      //     return {
+      //       error: "requested board does not belong to the currently logged in user"
+      //     }
+      //   }
+      //   readResult = await query(expiredTasksQuery(params.boardID));
+      //   break;
 
 
       //// GET ALL TASKS ////
-      case "GET /all-tasks":
-        readResult = await query(allTasksQuery(userID));
-        break;
+      // case "GET /all-tasks":
+      //   readResult = await query(allTasksQuery(userID));
+      //   break;
 
 
       //// GET TASKS ////
