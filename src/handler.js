@@ -4,7 +4,6 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
-const reportTableName = "ListPal-" + process.env.Env + "-Reports";
 
 module.exports.handler = async (event) => {
   try {
@@ -66,12 +65,6 @@ module.exports.handler = async (event) => {
       //// GET USER ////
       case "GET /user":
         readResult = await query(getUser(userID));
-        break;
-
-
-      //// GET STATS ////
-      case "GET /stats":
-        readResult = await query(getStats(userID));
         break;
 
 
@@ -497,24 +490,6 @@ function getUser(userID) {
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": userID }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
-}
-
-function getStats(userID) {
-  return {
-    "TableName": reportTableName,
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Score, WOTY, YearNum",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": "rl#" }
     },
     "ExpressionAttributeNames": {
       "#cd420": "PK",
