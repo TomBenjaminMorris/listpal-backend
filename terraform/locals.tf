@@ -24,10 +24,6 @@ locals {
       route     = "GET /user"
       protected = true
     },
-    weekly_reports = {
-      route     = "GET /weekly-reports"
-      protected = true
-    },
     stats = {
       route     = "GET /stats"
       protected = true
