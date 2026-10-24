@@ -13,7 +13,7 @@ The backend is fully serverless on AWS, defined in Terraform, and has no CI/CD p
 | Compute | AWS Lambda, Node.js 20 (CommonJS) |
 | API | API Gateway v2 (HTTP API), single Lambda integration |
 | Auth | Cognito user pool, JWT authoriser, OAuth code flow with a custom domain |
-| Data | DynamoDB, two tables, single-table design per table |
+| Data | DynamoDB, one table, single-table design |
 | Scheduling | EventBridge (CloudWatch Events) cron rules |
 | IaC | Terraform, S3 remote state |
 | Environments | One only in practice: `Dev` (the `env` variable defaults to `Dev`) |
@@ -49,7 +49,7 @@ listpal-backend/
 │   ├── cronjob.tf             Score reset rules and Lambda
 │   ├── cognito.tf             User pool, domain, client, seed users
 │   ├── acm.tf / route53.tf    Certificate (us-east-1) and DNS for the login domain
-│   ├── dynamodb.tf            Both tables
+│   ├── dynamodb.tf            Main table
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
 ├── test-data/                 Manual DynamoDB export and import scripts, plus export files
@@ -83,7 +83,6 @@ flowchart LR
 
     subgraph Data["DynamoDB (eu-west-2)"]
         T1[("ListPal-Dev<br/>PK, SK, GSI1")]
-        T2[("ListPal-Dev-Reports<br/>PK, SK, GSI1")]
     end
 
     EB["EventBridge cron rules"]
@@ -94,7 +93,6 @@ flowchart LR
     APIGW -->|"validates JWT against pool"| UP
     APIGW -->|"routeKey"| L1
     L1 --> T1
-    L1 --> T2
     UP -->|"post-confirmation"| L2
     L2 -->|"POST /new-user (unauthenticated)"| APIGW
     EB -->|"weekly, monthly, yearly"| L3
@@ -144,7 +142,6 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /task?taskID=` | JWT | One task |
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
-| `GET /stats` | JWT | Score, `WOTY`, `YearNum` for each report line |
 | `POST /new-user` | none | Create user, demo board and welcome task |
 | `POST /task-sync` | JWT | Batch of `create`, `update`, `delete` task actions (the main write path) |
 | `POST /rename-category` | JWT | Update `Category` on a list of task IDs |
@@ -161,7 +158,7 @@ Gateway settings: HTTP API, CORS open to all origins, default throttling of 10 r
 
 ## 5. Data model
 
-DynamoDB, on-demand style single-table patterns. Both tables have `PK` (S), `SK` (S), a global secondary index `GSI1` (`GSI1-PK`, `GSI1-SK`, projection ALL), and TTL on `ExpiryDateTTL`.
+DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S), a global secondary index `GSI1` (`GSI1-PK`, `GSI1-SK`, projection ALL), and TTL on `ExpiryDateTTL`.
 
 ### `ListPal-{Env}` (main table)
 
@@ -177,13 +174,7 @@ Access patterns:
 - Active tasks for a board: query `GSI1` with `GSI1-PK = b#<id>` and `GSI1-SK >= now`. The string `"nil"` sorts after numeric strings, so tasks with no expiry stay "active".
 - All boards across all users (used by the score reset): query `GSI1` with `GSI1-PK = "b#"`.
 
-### `ListPal-{Env}-Reports`
-
-| Entity | PK | SK | Notes |
-| --- | --- | --- | --- |
-| ReportLine | `u#<sub>` | `rl#<uuid>` | `Score`, `WOTY` (week of year), `YearNum`. Read by `GET /stats`. Nothing in this repository writes new rows, so only existing rows are returned |
-
-Reference material: `terraform/config/db-schema.json` is a NoSQL Workbench model and `db_import.json` is a small seed set. Both pre-date the Reports table and some later attributes.
+Reference material: `terraform/config/db-schema.json` is a NoSQL Workbench model and `db_import.json` is a small seed set. Both pre-date some later attributes.
 
 ## 6. Scheduled jobs
 
@@ -215,7 +206,7 @@ flowchart TB
     subgraph euw2["eu-west-2 (default provider)"]
         APIGW["API Gateway v2<br/>ListPal-Dev<br/>api.vinsp.in"]
         L["3 Lambda functions<br/>+ log groups (1 day)"]
-        DDB[("2 DynamoDB tables")]
+        DDB[("1 DynamoDB table")]
         COG["Cognito user pool<br/>+ client + domain"]
         EVB["3 EventBridge rules"]
     end
@@ -295,7 +286,7 @@ How the code packaging works:
 
 ### Local development
 
-There is no local runtime in this repo. The `localdb-functionality` branch (merged in PR #5) relates to the frontend's local database and does not add backend tooling. The `test-data/` scripts talk to the real `ListPal-Dev` tables in `eu-west-2`. The `src/package.json` has no real test script.
+There is no local runtime in this repo. The `localdb-functionality` branch (merged in PR #5) relates to the frontend's local database and does not add backend tooling. The `test-data/` scripts talk to the real `ListPal-Dev` table in `eu-west-2`. The `src/package.json` has no real test script.
 
 ### Keeping this document current
 
@@ -322,10 +313,10 @@ The script never blocks a commit. If the `claude` CLI is missing or the model ca
 
 | Item | State |
 | --- | --- |
-| DynamoDB point-in-time recovery | Not enabled on either table |
+| DynamoDB point-in-time recovery | Not enabled |
 | AWS Backup plans or vaults | None |
 | Scheduled exports to S3 | None |
-| `deletion_protection_enabled` | `false` on both tables |
+| `deletion_protection_enabled` | `false` |
 | Cross-region replication (global tables) | None |
 | Terraform state | In S3; versioning is not managed by this repo, so confirm it in the bucket settings |
 
@@ -333,9 +324,9 @@ The only backups are **manual JSON exports** taken with scripts in `test-data/`:
 
 ```mermaid
 flowchart LR
-    DDB[("ListPal-Dev<br/>ListPal-Dev-Reports")]
-    EXP["data-exporter.js<br/>data-exporter-reports.js<br/>(Scan, unmarshall)"]
-    FILES["test-data/exports/<br/>ListPal-Dev-Test-Data-YYYY-MM-DD.json<br/>ListPal-Dev-Reports-Test-Data-YYYY-MM-DD.json"]
+    DDB[("ListPal-Dev")]
+    EXP["data-exporter.js<br/>(Scan, unmarshall)"]
+    FILES["test-data/exports/<br/>ListPal-Dev-Test-Data-YYYY-MM-DD.json"]
     TMP["exports/tmp<br/>(the file to import)"]
     IMP["data-importer.js<br/>(BatchWriteItem, 25 per batch)"]
 
@@ -348,8 +339,7 @@ flowchart LR
 ```sh
 cd test-data
 yarn install   # or npm install; ESM project ("type": "module")
-node data-exporter.js          # writes exports/ListPal-Dev-Test-Data-<date>.json
-node data-exporter-reports.js  # writes exports/ListPal-Dev-Reports-Test-Data-<date>.json
+node data-exporter.js  # writes exports/ListPal-Dev-Test-Data-<date>.json
 ```
 
 ### Restoring
@@ -361,13 +351,13 @@ node data-importer.js   # writes to ListPal-Dev
 
 ### Limitations to be aware of
 
-- Exporters use a single `Scan` with no pagination, so they stop at 1 MB of data per run. The table is small today but this will silently truncate once it grows.
-- The importer reads `./exports/tmp`, targets the hard-coded table `ListPal-Dev`, and does not retry `UnprocessedItems`. The reports table cannot be restored without editing the script.
+- The exporter uses a single `Scan` with no pagination, so they stop at 1 MB of data per run. The table is small today but this will silently truncate once it grows.
+- The importer reads `./exports/tmp`, targets the hard-coded table `ListPal-Dev`, and does not retry `UnprocessedItems`.
 - The scripts have a hard-coded table name and region (`eu-west-2`), so they back up Dev only.
 - `test-data/*` is in the root `.gitignore`, but earlier exports were committed before that rule existed, so they are tracked. Exports contain real email addresses and task text. Treat them as personal data.
 - TTL deletes (expired tasks) are permanent and not recoverable without PITR.
 
-Recommended improvements, if wanted: enable `point_in_time_recovery_enabled = true` on both tables, enable `deletion_protection_enabled`, and add an AWS Backup plan. These are one-line changes in `dynamodb.tf` for the module.
+Recommended improvements, if wanted: enable `point_in_time_recovery_enabled = true` on the table, enable `deletion_protection_enabled`, and add an AWS Backup plan. These are one-line changes in `dynamodb.tf` for the module.
 
 ## 10. Security and quality observations
 
@@ -375,7 +365,7 @@ These are things a reader should know before changing the system. They are not f
 
 - `cognito.tf` creates users with hard-coded passwords in the repository. Remove or randomise these for anything beyond throwaway development.
 - `POST /new-user` is unauthenticated and trusts the `userID`, `email` and `name` in the body. Anyone can create user, board and task records for an arbitrary ID. Securing it (for example with an IAM-authorised direct Lambda invoke from the Cognito trigger rather than a public HTTP call) would be better.
-- IAM policies use `Resource: "*"` and include stream actions the tables do not use. They should be scoped to the table ARNs.
+- IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
 - Errors are often returned as HTTP 200 with an `error` field, and the top-level `catch` in `handler.js` logs and returns nothing.
