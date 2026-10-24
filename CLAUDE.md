@@ -4,7 +4,7 @@ Serverless AWS backend for ListPal, defined in Terraform. Read `ARCHITECTURE.md`
 
 ## Layout
 
-- `src/`: all Lambda code (CommonJS, Node.js 20). One shared package, one zip, four handlers.
+- `src/`: all Lambda code (CommonJS, Node.js 20). One shared package, one zip, three handlers.
 - `terraform/`: all infrastructure. Routes are declared in `terraform/locals.tf` (`lambda_routes`).
 - `test-data/`: manual DynamoDB export and import scripts (ESM). These talk to the real Dev tables.
 - `bak/`: old code, gitignored. Ignore it.

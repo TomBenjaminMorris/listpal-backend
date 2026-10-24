@@ -4,7 +4,6 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
-const reportTableName = "ListPal-" + process.env.Env + "-Reports";
 
 module.exports.handler = async (event) => {
   try {
@@ -69,18 +68,6 @@ module.exports.handler = async (event) => {
         break;
 
 
-      //// GET WEEKLY REPORTS ////
-      case "GET /weekly-reports":
-        readResult = await query(getReports(userID));
-        break;
-
-
-      //// GET STATS ////
-      case "GET /stats":
-        readResult = await query(getStats(userID));
-        break;
-
-
       //// ADD USER ////
       case "POST /new-user":
         writeResult = await add(addUser(body));
@@ -133,14 +120,6 @@ module.exports.handler = async (event) => {
       //     // Update task details
       //     const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
       //     writeResultMulti.push(await update(updateResult));
-      //     // Conditionally add or remove the report task based on the 'checked' value
-      //     if (body.checked) {
-      //       const addResult = addReportTask(userID, body);
-      //       writeResultMulti.push(await add(addResult));
-      //     } else {
-      //       const deleteResult = deleteReportTask(body.taskID);
-      //       writeResultMulti.push(await remove(deleteResult));
-      //     }
       //     // Wait for all operations to complete concurrently
       //     const results = await Promise.all(writeResultMulti);
       //     // Set the final result if needed
@@ -236,24 +215,13 @@ module.exports.handler = async (event) => {
           // Update board scores details
           const scoreResult = updateBoardScores(userID, body.boardID, body.scores);
           writeResultMulti.push(await update(scoreResult));
-          // If a task is defined in the request
-          if (body.task) {
-            // Conditionally add or remove the report task based on the 'checked' value
-            if (body.task.checked) {
-              const addResult = addReportTask(userID, body.task);
-              writeResultMulti.push(await add(addResult));
-            } else {
-              const deleteResult = deleteReportTask(body.task.taskID);
-              writeResultMulti.push(await remove(deleteResult));
-            }
-          }
           // Wait for all operations to complete concurrently
           const results = await Promise.all(writeResultMulti);
           // Set the final result if needed
           writeResult = results;
         } catch (error) {
-          console.error("Error updating scores or task reports:", error);
-          writeResult = { error: "Task/Score update failed", details: error.message };
+          console.error("Error updating scores:", error);
+          writeResult = { error: "Score update failed", details: error.message };
         }
         break;
 
@@ -530,43 +498,6 @@ function getUser(userID) {
   }
 }
 
-function getReports(userID) {
-  return {
-    "TableName": reportTableName,
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "Limit": 10,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Summary, Score, WOTY, YearNum",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": "rl#" }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
-}
-
-function getStats(userID) {
-  return {
-    "TableName": reportTableName,
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Score, WOTY, YearNum",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": "rl#" }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
-}
-
 function updateTaskDescription(userID, taskID, description) {
   return {
     "TableName": tableName,
@@ -650,44 +581,11 @@ function addTask(userID, body) {
   }
 }
 
-function addReportTask(userID, body) {
-  return {
-    "Item": {
-      "PK": { "S": "t#" },
-      "SK": { "S": body.taskID },
-      "ExpiryDateTTL": { "N": "0" },
-      "Description": { "S": body.description },
-      "UserID": { "S": userID },
-      "Category": { "S": body.category },
-      "EntityType": { "S": "Task" },
-      "Emoji": { "S": body.emoji },
-      "ExpiryDateTTL": { "N": String(getNextMondayTimestamp()) },
-    },
-    "TableName": reportTableName
-  }
-}
-
-function getNextMondayTimestamp() {
-  var d = new Date();
-  d.setDate(d.getDate() + (((1 + 7 - d.getDay()) % 7) || 7));
-  return Math.floor(d / 1000) + 3600;
-}
-
 function deleteTask(userID, taskID) {
   return {
     "TableName": tableName,
     "Key": {
       "PK": { "S": userID },
-      "SK": { "S": taskID }
-    }
-  }
-}
-
-function deleteReportTask(taskID) {
-  return {
-    "TableName": reportTableName,
-    "Key": {
-      "PK": { "S": "t#" },
       "SK": { "S": taskID }
     }
   }
