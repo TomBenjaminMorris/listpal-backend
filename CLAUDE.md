@@ -17,14 +17,8 @@ Serverless AWS backend for ListPal, defined in Terraform. Read `ARCHITECTURE.md`
 - Do not run `terraform apply` or any AWS write command unless explicitly asked. Running `terraform plan` is fine.
 - Match the style of the surrounding code, including comment density and naming.
 
-## Writing style
+## Comments
 
-Applies to all comments, documentation, commit messages and chat summaries written for this repository.
-
-- Use British English (colour, behaviour, authorise, initialise, artefact, licence as a noun).
-- Do not use em dashes or en dashes as punctuation. Use a full stop, comma, colon, semicolon or brackets instead.
-- Avoid tell-tale AI prose: no "delve", "robust", "seamless", "leverage", "crucial", "it is worth noting", "in conclusion", no rhetorical triplets, and no padding or filler openings.
-- Write plainly and concisely. State facts, not enthusiasm. Prefer short sentences.
 - Comments explain why, not what. Do not add comments that restate the code.
 
 ## Diagrams
@@ -46,7 +40,6 @@ When editing `ARCHITECTURE.md`, whether by hand or by the hook:
 
 - Update only the sections affected by the change. Keep the existing structure, tables and Mermaid diagrams valid.
 - Add or amend Mermaid diagrams when a change introduces a flow or relationship that is easier to see than to read.
-- Keep it in British English with no em dashes.
 - Do not record commit hashes. A pre-commit hook cannot know the hash of the commit it belongs to.
 - Remove statements that are no longer true instead of appending corrections. Do not leave a history of changes in the document.
 - If a change fixes something listed in section 10 (security and quality observations), remove or amend that item.
