@@ -151,7 +151,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 
 Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. Their code remains in `handler.js` as comments or unused functions.
 
-Gateway settings: HTTP API, CORS open to all origins, default throttling of 10 requests per second with a burst of 10, access logs to CloudWatch with one day retention.
+Gateway settings: HTTP API, CORS open to all origins with preflights cacheable for 2 hours (`max_age = 7200`, so browsers skip the `OPTIONS` round trip on repeat requests), default throttling of 10 requests per second with a burst of 10, access logs to CloudWatch with one day retention.
 
 ### Task sync
 
