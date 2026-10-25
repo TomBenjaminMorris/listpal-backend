@@ -9,6 +9,8 @@ module "api_gateway" {
     allow_headers = ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token", "x-amz-user-agent"]
     allow_methods = ["*"]
     allow_origins = ["*"]
+    # Without this every request is preceded by a preflight; 7200 is the most Chromium will honour
+    max_age = 7200
   }
 
   domain_name = "*.${var.domain_name}"
