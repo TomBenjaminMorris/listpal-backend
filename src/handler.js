@@ -154,15 +154,6 @@ module.exports.handler = async (event) => {
       //   break;
 
 
-      //// RENAME CATEGORY ////
-      case "POST /rename-category":
-        if (!Array.isArray(body?.taskIDs) || typeof body.category !== "string") {
-          return respond(400, { error: "taskIDs must be an array and category a string" });
-        }
-        writeResult = await renameCategory(userID, body.taskIDs, body.category);
-        break;
-
-
       //// ADD BOARD ////
       case "POST /new-board":
         writeResult = await add(addBoard(userID, body));
@@ -172,15 +163,6 @@ module.exports.handler = async (event) => {
       //// RENAME BOARD ////
       case "POST /rename-board":
         writeResult = await update(renameBoard(userID, body.boardID, body.name));
-        break;
-
-
-      //// CARD EMOJI ////
-      case "POST /card-emoji":
-        if (!Array.isArray(body?.taskIDs) || typeof body.emoji !== "string") {
-          return respond(400, { error: "taskIDs must be an array and emoji a string" });
-        }
-        writeResult = await updateCardEmoji(userID, body.taskIDs, body.emoji);
         break;
 
 
@@ -485,74 +467,6 @@ function deleteTask(userID, taskID) {
     "Key": {
       "PK": { "S": userID },
       "SK": { "S": taskID }
-    }
-  }
-}
-
-async function renameCategory(userID, taskIDs, category) {
-  let result = []
-  for (const id of taskIDs) {
-    const data = await updateIfExists(getRenameCommand(userID, id, category));
-    result.push(data)
-  }
-  return result
-}
-
-// A task deleted since the client last loaded has nothing to change, so skip it rather than fail the batch.
-async function updateIfExists(input) {
-  try {
-    return await update(input);
-  } catch (error) {
-    if (error.name === "ConditionalCheckFailedException") return null;
-    throw error;
-  }
-}
-
-function getRenameCommand(userID, taskID, category) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ConditionExpression": "attribute_exists(SK)",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": category
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Category"
-    }
-  }
-}
-
-async function updateCardEmoji(userID, taskIDs, emoji) {
-  let result = []
-  for (const id of taskIDs) {
-    const data = await updateIfExists(getCardEmojiCommand(userID, id, emoji));
-    result.push(data)
-  }
-  return result
-}
-
-function getCardEmojiCommand(userID, taskID, emoji) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ConditionExpression": "attribute_exists(SK)",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": emoji
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Emoji"
     }
   }
 }

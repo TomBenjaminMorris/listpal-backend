@@ -56,10 +56,6 @@ locals {
     #   route     = "POST /delete-task"
     #   protected = true
     # },
-    rename_category = {
-      route     = "POST /rename-category"
-      protected = true
-    },
     user_theme = {
       route     = "POST /user-theme"
       protected = true
@@ -70,10 +66,6 @@ locals {
     },
     rename_board = {
       route     = "POST /rename-board"
-      protected = true
-    },
-    card_emoji = {
-      route     = "POST /card-emoji"
       protected = true
     },
     board_emoji = {
