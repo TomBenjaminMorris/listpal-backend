@@ -1,0 +1,12 @@
+{
+  "name": "listpal-backend-tests",
+  "private": true,
+  "description": "Kept out of src/ so test-only packages never reach the Lambda zip",
+  "scripts": {
+    "test": "NODE_PATH=./node_modules:../src/node_modules node --test ."
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "aws-sdk-client-mock": "^4.1.0"
+  }
+}

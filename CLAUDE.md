@@ -6,6 +6,7 @@ Serverless AWS backend for ListPal, defined in Terraform. Read `ARCHITECTURE.md`
 
 - `src/`: all Lambda code (CommonJS, Node.js 20). One shared package, one zip, three handlers.
 - `terraform/`: all infrastructure. Routes are declared in `terraform/locals.tf` (`lambda_routes`).
+- `test/`: unit tests (`node --test`, `aws-sdk-client-mock`). It is a separate package so test-only dependencies never reach `src/node_modules` or the Lambda zip. Run `yarn install && yarn test` inside it.
 - `test-data/`: manual DynamoDB export and import scripts (ESM). These talk to the real Dev tables.
 - `bak/`: old code, gitignored. Ignore it.
 

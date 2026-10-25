@@ -28,6 +28,7 @@ module "lambda_function" {
                     "dynamodb:GetShardIterator",
                     "dynamodb:ListStreams",
                     "dynamodb:Query",
+                    "dynamodb:GetItem",
                     "dynamodb:UpdateItem",
                     "dynamodb:PutItem",
                     "dynamodb:DeleteItem"
