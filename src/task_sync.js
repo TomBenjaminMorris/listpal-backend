@@ -130,6 +130,18 @@ async function updateTask(ctx, op) {
     return (await getTask(ctx, op.SK)) ? "applied" : "gone";
   }
 
+  // Only a completion change moves scores and so needs the current task; anything else is a single write
+  // whose condition stops a deleted task coming back as a partial item
+  if (!("CompletedDate" in fields)) {
+    try {
+      await ctx.client.send(new UpdateItemCommand(taskUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
+      return "applied";
+    } catch (error) {
+      if (error.name === "ConditionalCheckFailedException") return "gone";
+      throw error;
+    }
+  }
+
   for (let attempt = 0; attempt < 2; attempt++) {
     // Without this read an UpdateItem on a deleted task would recreate it as a partial item.
     const current = await getTask(ctx, op.SK);
@@ -179,8 +191,9 @@ async function deleteTask(ctx, op) {
   return "applied";
 }
 
-function taskUpdate(ctx, SK, fields, expectedCompletedDate) {
-  const names = { "#completed": "CompletedDate" };
+// expectedCompletedDate: undefined means the item has no CompletedDate; pass checkCompletion: false to skip the check
+function taskUpdate(ctx, SK, fields, expectedCompletedDate, { checkCompletion = true } = {}) {
+  const names = {};
   const values = {};
   const sets = Object.keys(fields).map((name, i) => {
     names[`#f${i}`] = name;
@@ -188,12 +201,15 @@ function taskUpdate(ctx, SK, fields, expectedCompletedDate) {
     return `#f${i} = :f${i}`;
   });
 
-  let condition = "attribute_exists(SK) And ";
-  if (expectedCompletedDate === undefined) {
-    condition += "attribute_not_exists(#completed)";
-  } else {
-    condition += "#completed = :expectedCompleted";
-    values[":expectedCompleted"] = expectedCompletedDate;
+  let condition = "attribute_exists(SK)";
+  if (checkCompletion) {
+    names["#completed"] = "CompletedDate";
+    if (expectedCompletedDate === undefined) {
+      condition += " And attribute_not_exists(#completed)";
+    } else {
+      condition += " And #completed = :expectedCompleted";
+      values[":expectedCompleted"] = expectedCompletedDate;
+    }
   }
 
   return {

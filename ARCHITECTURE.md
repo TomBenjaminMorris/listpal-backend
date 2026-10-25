@@ -166,6 +166,9 @@ sequenceDiagram
     F->>A: POST /sync {ops}
     A->>D: Query boards (consistent read)
     loop each op, in order
+        opt update that changes CompletedDate
+            A->>D: GetItem task (consistent read)
+        end
         alt task is completed or uncompleted, board exists
             A->>D: TransactWriteItems (task write + board score ADD)
         else no score change
@@ -199,6 +202,7 @@ Behaviour that matters when changing this code:
 - A task completed this period adds 1 to every score field it still counts towards. Unticking takes 1 back, but never below zero. Periods come from `src/score_periods.js`, which must match the reset crons (see section 6).
 - A create whose task already exists (an earlier attempt landed but the response was lost) is applied as an update, so scores are not counted twice.
 - Only `CompletedDate` changes move scores. Edits to other fields never do.
+- An update without `CompletedDate` is a single `UpdateItem` conditioned on `attribute_exists(SK)`, so a deleted task returns `gone` instead of coming back as a partial item. Only completion changes read the task first, because the score change depends on its current `CompletedDate`.
 - A resent completion that an earlier attempt already applied changes no scores, but its board is still returned in `data.boards` with the current scores. The client may have read scores before that earlier attempt landed.
 
 ## 5. Data model

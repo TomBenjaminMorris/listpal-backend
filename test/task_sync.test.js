@@ -31,6 +31,8 @@ const op = (kind, fields = {}, overrides = {}) => ({ opId: "t#1:1", SK: "t#1", b
 const inputs = (mock, command) => mock.commandCalls(command).map(call => call.args[0].input);
 const scoreUpdate = transactInput => transactInput.TransactItems[1].Update;
 
+const conditionalCheckFailed = () => Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" });
+
 function conditionFailure() {
   return Object.assign(new Error("Transaction cancelled"), {
     name: "TransactionCanceledException",
@@ -112,12 +114,27 @@ test("an update that does not touch completion reports no scores", async () => {
   assert.deepEqual(result.boards, []);
 });
 
-test("an update to a deleted task reports gone and writes nothing", async () => {
+test("an update that does not touch completion is one conditional write", async () => {
+  const { client, mock } = setup({ task: { CompletedDate: "nil" } });
+  const result = await sync(client, [op("update", { Description: "Typing" })]);
+
+  assert.equal(result.results[0].status, "applied");
+  assert.equal(inputs(mock, GetItemCommand).length, 0);
+  const updates = inputs(mock, UpdateItemCommand);
+  assert.equal(updates.length, 1);
+  assert.ok(!Object.values(updates[0].ExpressionAttributeNames).includes("CompletedDate"));
+});
+
+test("an update to a deleted task reports gone and cannot recreate it", async () => {
   const { client, mock } = setup();
+  mock.on(UpdateItemCommand).rejects(conditionalCheckFailed());
   const result = await sync(client, [op("update", { Description: "Edited after delete" })]);
 
   assert.equal(result.results[0].status, "gone");
-  assert.equal(inputs(mock, UpdateItemCommand).length, 0);
+  assert.equal(inputs(mock, GetItemCommand).length, 0);
+  const updates = inputs(mock, UpdateItemCommand);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].ConditionExpression, "attribute_exists(SK)");
   assert.equal(inputs(mock, TransactWriteItemsCommand).length, 0);
 });
 
