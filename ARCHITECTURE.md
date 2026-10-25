@@ -178,8 +178,8 @@ sequenceDiagram
             A->>D: Put, Update or Delete on the task
         end
     end
-    opt any board score changed
-        A->>D: Query boards again
+    opt any op changed CompletedDate on a board
+        A->>D: Query boards again (consistent read)
     end
     A-->>F: data.results per opId, data.boards with new scores
 ```
@@ -205,6 +205,7 @@ Behaviour that matters when changing this code:
 - A task completed this period adds 1 to every score field it still counts towards. Unticking takes 1 back, but never below zero. Periods come from `src/score_periods.js`, which must match the reset crons (see section 6).
 - A create whose task already exists (an earlier attempt landed but the response was lost) is applied as an update, so scores are not counted twice.
 - Only `CompletedDate` changes move scores. Edits to other fields never do.
+- A resent completion that an earlier attempt already applied changes no scores, but its board is still returned in `data.boards` with the current scores. The client may have read scores before that earlier attempt landed.
 
 ## 5. Data model
 
@@ -220,7 +221,7 @@ DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S
 
 Access patterns:
 
-- Boards for a user: query `PK = u#...` and `begins_with(SK, "b#")`.
+- Boards for a user: query `PK = u#...` and `begins_with(SK, "b#")`. Strongly consistent, because scores are read straight after a sync.
 - Active tasks for a board: query `GSI1` with `GSI1-PK = b#<id>` and `GSI1-SK >= now`. The string `"nil"` sorts after numeric strings, so tasks with no expiry stay "active".
 - All boards across all users (used by the score reset): query `GSI1` with `GSI1-PK = "b#"`.
 

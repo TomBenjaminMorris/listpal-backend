@@ -158,6 +158,9 @@ async function updateTask(ctx, op) {
         await ctx.client.send(new UpdateItemCommand(update));
       }
       noteScoreChange(ctx, boardID, periods, delta);
+      // A resent tick that an earlier request already applied changes nothing, but the client may be
+      // holding scores read before that request finished, so report the current ones anyway.
+      if (board && "CompletedDate" in fields) ctx.scoredBoards.add(boardID);
       return "applied";
     } catch (error) {
       if (!isConditionFailure(error)) throw error;

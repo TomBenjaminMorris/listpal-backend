@@ -101,6 +101,15 @@ test("a retried tick does not count twice", async () => {
   assert.equal(result.results[0].status, "applied");
   assert.equal(inputs(mock, TransactWriteItemsCommand).length, 0);
   assert.equal(inputs(mock, UpdateItemCommand).length, 1);
+  // The client may have read scores before the first attempt landed, so it still gets the current ones
+  assert.deepEqual(result.boards, [{ SK: BOARD, WScore: 3, MScore: 5, YScore: 9 }]);
+});
+
+test("an update that does not touch completion reports no scores", async () => {
+  const { client } = setup({ task: { CompletedDate: "nil" } });
+  const result = await sync(client, [op("update", { Description: "Typing" })]);
+
+  assert.deepEqual(result.boards, []);
 });
 
 test("an update to a deleted task reports gone and writes nothing", async () => {

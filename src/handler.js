@@ -363,7 +363,8 @@ function boardsPerUserQuery(userID) {
   return {
     "TableName": tableName,
     "ScanIndexForward": true,
-    "ConsistentRead": false,
+    // Scores are read straight after a sync on page load, so an eventually consistent read can miss the tick
+    "ConsistentRead": true,
     "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
     "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji, CategoryOrder",
     "ExpressionAttributeValues": {
