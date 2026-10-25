@@ -27,10 +27,6 @@ listpal-backend/
 ├── README.md                  Only a list of useful links
 ├── ARCHITECTURE.md            This file
 ├── CLAUDE.md                  Working rules for AI assistants, including the documentation rules
-├── .githooks/
-│   └── pre-commit             Runs scripts/update-architecture.sh (enable per clone, see section 8)
-├── scripts/
-│   └── update-architecture.sh Refreshes this file from the staged diff using a cheap model
 ├── src/                       All Lambda code (one shared package, one zip)
 │   ├── handler.js             API Lambda: every HTTP route
 │   ├── task_sync.js           Batch task sync (POST /sync), including score changes
@@ -341,25 +337,6 @@ There is no local runtime in this repo. The `localdb-functionality` branch (merg
 
 Unit tests live in `test/`, a separate package so test-only dependencies stay out of the Lambda zip. Run `yarn install && yarn test` inside it. DynamoDB is mocked, so the tests need no AWS access.
 
-### Keeping this document current
-
-A pre-commit hook asks a cheap model to update this file from the staged diff, and stages the result into the same commit. The hook is opt-in per clone:
-
-```sh
-git config core.hooksPath .githooks
-```
-
-```mermaid
-flowchart LR
-    C["git commit"] --> H[".githooks/pre-commit"]
-    H --> S["scripts/update-architecture.sh"]
-    S -->|"staged diff, excluding lockfiles and exports"| M["claude -p (ARCH_DOC_MODEL, default haiku)"]
-    M -->|"edits ARCHITECTURE.md"| S
-    S -->|"git add"| C
-```
-
-The script never blocks a commit. If the `claude` CLI is missing or the model call fails, it prints a warning and the commit goes ahead without a documentation update. Use `git commit --no-verify` to skip the hook in an emergency, then correct this file by hand.
-
 ## 9. Backups and data recovery
 
 **There is no automated backup of any kind.** Searching the Terraform for point-in-time recovery, AWS Backup, or on-demand backup resources finds nothing. Specifically:
@@ -438,4 +415,3 @@ These are things a reader should know before changing the system. They are not f
 | Change auth, callback URLs or tokens | `terraform/cognito.tf` |
 | Change domains or certificates | `terraform/acm.tf`, `route53.tf`, `variables.tf` |
 | Back up or restore data | `test-data/` (section 9) |
-| Change how this document is maintained | `.githooks/pre-commit`, `scripts/update-architecture.sh`, `CLAUDE.md` |
