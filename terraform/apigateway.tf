@@ -49,8 +49,9 @@ module "api_gateway" {
 
   stage_default_route_settings = {
     detailed_metrics_enabled = false
-    throttling_burst_limit   = 10
-    throttling_rate_limit    = 10
+    # A single board load makes 3-4 requests, so 10/10 throttled ordinary use across users and tabs
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
   }
 
   authorizers = {

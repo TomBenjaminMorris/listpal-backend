@@ -41,8 +41,9 @@ module "lambda_function" {
 
   # A /sync batch of 50 ops runs one after another, which can outlast the 3 s default at 128 MB.
   # A timed-out batch would be resent whole and could time out on every retry.
-  timeout     = 15
-  memory_size = 256
+  timeout = 15
+  # CPU scales with memory; SDK start-up and item marshalling are CPU-bound, so this shortens cold starts and syncs
+  memory_size = 1024
 
   environment_variables = {
     Env = var.env
