@@ -79,7 +79,7 @@ flowchart LR
     end
 
     subgraph Compute["Lambda (nodejs20.x, one zip)"]
-        L1["listpal_dev<br/>handler.handler"]
+        L1["listpal_dev<br/>handler.handler<br/>256 MB, 15 s timeout"]
         L2["listpal_sign_up_dev<br/>sign_up.handler"]
         L3["listpal_score_reset_dev<br/>score_reset.handler"]
     end
@@ -147,11 +147,9 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /user` | JWT | User theme |
 | `POST /new-user` | none | Create user, demo board and welcome task |
 | `POST /sync` | JWT | Batch of up to 50 `create`, `update`, `delete` task ops (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
-| `POST /rename-category` | JWT | Update `Category` on a list of task IDs (tasks deleted since the client loaded are skipped) |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits |
 | `POST /delete-board` | JWT | Deletes the board's active tasks, then the board (ownership checked) |
-| `POST /card-emoji` | JWT | Update emoji on a list of task IDs (tasks deleted since the client loaded are skipped) |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 | `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` |
 
@@ -423,7 +421,7 @@ These are things a reader should know before changing the system. They are not f
 - IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
-- Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Rename category, card emoji and board deletion are plain loops with no transaction.
+- Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is a plain loop with no transaction.
 - `delete-board` only deletes tasks that appear in `activeTasksQuery` (not expired ones), so expired tasks can be orphaned until their TTL removes them.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
