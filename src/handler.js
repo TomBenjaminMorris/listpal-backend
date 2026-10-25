@@ -2,8 +2,18 @@
 const { DynamoDBClient, QueryCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
 const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
+const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
+
+// A plain object return is sent by API Gateway as a 200, so errors need the explicit response shape.
+function respond(statusCode, payload) {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  };
+}
 
 module.exports.handler = async (event) => {
   try {
@@ -24,9 +34,7 @@ module.exports.handler = async (event) => {
       case "GET /active-tasks":
         valid = await verifyBoard(userID, params.boardID);
         if (!valid) {
-          return {
-            error: "requested board does not belong to the currently logged in user"
-          }
+          return respond(403, { error: "requested board does not belong to the currently logged in user" });
         }
         readResult = await query(activeTasksQuery(params.boardID));
         break;
@@ -85,18 +93,14 @@ module.exports.handler = async (event) => {
 
 
       //// SYNC TASK CHANGES ////
-      case "POST /task-sync":
+      case "POST /sync":
         try {
-          writeResult = await handleTaskSync(userID, body.task_actions);
+          writeResult = await syncTasks(client, tableName, userID, validateSyncBody(body));
         } catch (error) {
-          console.error("Error during task synchronisation:", error);
-          return {
-            statusCode: 500,
-            body: JSON.stringify({
-              message: "An error occurred while syncing tasks.",
-              error: error.message || "Unknown error",
-            }),
-          };
+          if (error instanceof ValidationError) {
+            return respond(400, { error: error.message });
+          }
+          throw error;
         }
         break;
 
@@ -152,6 +156,9 @@ module.exports.handler = async (event) => {
 
       //// RENAME CATEGORY ////
       case "POST /rename-category":
+        if (!Array.isArray(body?.taskIDs) || typeof body.category !== "string") {
+          return respond(400, { error: "taskIDs must be an array and category a string" });
+        }
         writeResult = await renameCategory(userID, body.taskIDs, body.category);
         break;
 
@@ -170,6 +177,9 @@ module.exports.handler = async (event) => {
 
       //// CARD EMOJI ////
       case "POST /card-emoji":
+        if (!Array.isArray(body?.taskIDs) || typeof body.emoji !== "string") {
+          return respond(400, { error: "taskIDs must be an array and emoji a string" });
+        }
         writeResult = await updateCardEmoji(userID, body.taskIDs, body.emoji);
         break;
 
@@ -190,9 +200,7 @@ module.exports.handler = async (event) => {
       case "POST /delete-board":
         valid = await verifyBoard(userID, body.boardID);
         if (!valid) {
-          return {
-            error: "Requested board does not belong to the currently logged-in user"
-          };
+          return respond(403, { error: "Requested board does not belong to the currently logged-in user" });
         }
 
         try {
@@ -201,28 +209,22 @@ module.exports.handler = async (event) => {
           return boardDeletionResult;
         } catch (error) {
           console.error("Failed to delete board or tasks:", error);
-          return {
-            error: "Failed to delete board and/or tasks",
-            details: error.message
-          };
+          return respond(500, { error: "Failed to delete board and/or tasks", details: error.message });
         }
 
 
       //// UPDATE BOARD SCORES ////
+      // Manual score edits only. Ticking a task changes scores inside POST /sync.
       case "POST /board-scores":
-        try {
-          const writeResultMulti = [];
-          // Update board scores details
-          const scoreResult = updateBoardScores(userID, body.boardID, body.scores);
-          writeResultMulti.push(await update(scoreResult));
-          // Wait for all operations to complete concurrently
-          const results = await Promise.all(writeResultMulti);
-          // Set the final result if needed
-          writeResult = results;
-        } catch (error) {
-          console.error("Error updating scores:", error);
-          writeResult = { error: "Score update failed", details: error.message };
+        const scores = body?.scores;
+        if (!scores || !["YScore", "MScore", "WScore"].every(field => Number.isFinite(Number(scores[field])) && Number(scores[field]) >= 0)) {
+          return respond(400, { error: "scores must contain non-negative YScore, MScore and WScore" });
         }
+        valid = await verifyBoard(userID, body.boardID);
+        if (!valid) {
+          return respond(403, { error: "Requested board does not belong to the currently logged-in user" });
+        }
+        writeResult = await update(updateBoardScores(userID, body.boardID, scores));
         break;
 
 
@@ -245,115 +247,10 @@ module.exports.handler = async (event) => {
     }
 
   } catch (error) {
-    console.log(error);
+    console.error(error);
+    return respond(500, { error: "Internal server error" });
   }
 }
-
-
-///////////////////// SYNC FUNCTIONALITY START /////////////////////
-async function initializeTaskValues(task) {
-  return {
-    ...task,
-    ExpiryDateTTL: task.ExpiryDateTTL || 0,
-    ExpiryDate: task.ExpiryDate || '',
-    Description: task.Description || '',
-    Category: task.Category || '',
-    'GSI1-SK': task['GSI1-SK'] || '',
-    CompletedDate: task.CompletedDate || '',
-    Important: task.Important || '',
-    Link: task.Link || ''
-  };
-}
-
-async function handleTaskSync(userID, tasks) {
-  const promises = tasks.map(async (task_action) => {
-    let result;
-    const taskID = task_action.SK;
-    const initializedTask = await initializeTaskValues(task_action);
-    switch (task_action.Action) {
-      case "create":
-        result = await add(addTaskSync(userID, initializedTask));
-        return {
-          ...result,
-          action: "create",
-          taskId: taskID
-        };
-      case "delete":
-        result = await remove(deleteTaskSync(userID, taskID));
-        return {
-          ...result,
-          action: "delete",
-          taskId: taskID
-        };
-      case "update":
-        result = await update(updateTaskSync(userID, initializedTask));
-        return {
-          ...result,
-          action: "update",
-          taskId: taskID
-        };
-      default:
-        return null;
-    }
-  });
-  return await Promise.all(promises);
-}
-
-function updateTaskSync(userID, task) {
-  return {
-    TableName: tableName,
-    Key: {
-      PK: { "S": userID },
-      SK: { "S": task.SK }
-    },
-    UpdateExpression: "SET ExpiryDateTTL = :ttl, ExpiryDate = :expiry, Description = :desc, Category = :cat, #gsi1sk = :gsi1sk, CompletedDate = :completed, Important = :important, Link = :link",
-    ExpressionAttributeValues: {
-      ":ttl": { "N": String(task.ExpiryDateTTL) },
-      ":expiry": { "S": task.ExpiryDate },
-      ":desc": { "S": task.Description },
-      ":cat": { "S": task.Category },
-      ":gsi1sk": { "S": task['GSI1-SK'] },
-      ":completed": { "S": task.CompletedDate },
-      ":important": { "S": task.Important },
-      ":link": { "S": task.Link },
-    },
-    ExpressionAttributeNames: {
-      "#gsi1sk": "GSI1-SK"
-    }
-  };
-}
-
-function addTaskSync(userID, body) {
-  return {
-    "TableName": tableName,
-    "Item": {
-      "CreatedDate": { "S": body.CreatedDate },
-      "GSI1-SK": { "S": body.ExpiryDate },
-      "SK": { "S": body.SK },
-      "ExpiryDate": { "S": "nil" },
-      "ExpiryDateTTL": { "N": "0" },
-      "GSI1-PK": { "S": body["GSI1-PK"] },
-      "GSI1-SK": { "S": "nil" },
-      "Description": { "S": body.Description },
-      "PK": { "S": userID },
-      "CompletedDate": { "S": "nil" },
-      "Category": { "S": body.Category },
-      "EntityType": { "S": "Task" },
-      "Emoji": { "S": body.Emoji },
-    }
-  }
-}
-
-function deleteTaskSync(userID, taskID) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    }
-  }
-}
-///////////////////// SYNC FUNCTIONALITY END /////////////////////
 
 
 async function verifyBoard(userID, boardID) {
@@ -593,14 +490,20 @@ function deleteTask(userID, taskID) {
 
 async function renameCategory(userID, taskIDs, category) {
   let result = []
+  for (const id of taskIDs) {
+    const data = await updateIfExists(getRenameCommand(userID, id, category));
+    result.push(data)
+  }
+  return result
+}
+
+// A task deleted since the client last loaded has nothing to change, so skip it rather than fail the batch.
+async function updateIfExists(input) {
   try {
-    for (const id of taskIDs) {
-      const data = await update(getRenameCommand(userID, id, category));
-      result.push(data)
-    }
-    return result
-  } catch (e) {
-    return "Batch update failed: " + e;
+    return await update(input);
+  } catch (error) {
+    if (error.name === "ConditionalCheckFailedException") return null;
+    throw error;
   }
 }
 
@@ -612,6 +515,7 @@ function getRenameCommand(userID, taskID, category) {
       "SK": { "S": taskID }
     },
     "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ConditionExpression": "attribute_exists(SK)",
     "ExpressionAttributeValues": {
       ":6e6a0": {
         "S": category
@@ -625,15 +529,11 @@ function getRenameCommand(userID, taskID, category) {
 
 async function updateCardEmoji(userID, taskIDs, emoji) {
   let result = []
-  try {
-    for (const id of taskIDs) {
-      const data = await update(getCardEmojiCommand(userID, id, emoji));
-      result.push(data)
-    }
-    return result
-  } catch (e) {
-    return "Batch update failed: " + e;
+  for (const id of taskIDs) {
+    const data = await updateIfExists(getCardEmojiCommand(userID, id, emoji));
+    result.push(data)
   }
+  return result
 }
 
 function getCardEmojiCommand(userID, taskID, emoji) {
@@ -644,6 +544,7 @@ function getCardEmojiCommand(userID, taskID, emoji) {
       "SK": { "S": taskID }
     },
     "UpdateExpression": "SET #6e6a0 = :6e6a0",
+    "ConditionExpression": "attribute_exists(SK)",
     "ExpressionAttributeValues": {
       ":6e6a0": {
         "S": emoji

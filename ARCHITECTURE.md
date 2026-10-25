@@ -32,7 +32,9 @@ listpal-backend/
 ├── scripts/
 │   └── update-architecture.sh Refreshes this file from the staged diff using a cheap model
 ├── src/                       All Lambda code (one shared package, one zip)
-│   ├── handler.js             API Lambda: every HTTP route (945 lines)
+│   ├── handler.js             API Lambda: every HTTP route
+│   ├── task_sync.js           Batch task sync (POST /sync), including score changes
+│   ├── score_periods.js       Which score periods (W, M, Y) a completion counts towards
 │   ├── score_reset.js         Cron Lambda: zeroes board scores
 │   ├── sign_up.js             Cognito post-confirmation trigger
 │   ├── package.json / yarn.lock
@@ -52,6 +54,7 @@ listpal-backend/
 │   ├── dynamodb.tf            Main table
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
+├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock)
 ├── test-data/                 Manual DynamoDB export and import scripts, plus export files
 └── bak/                       Old code kept for reference (gitignored, ignore it)
 ```
@@ -106,7 +109,7 @@ flowchart LR
 3. API Gateway's JWT authoriser checks the token against the user pool and client ID. `POST /new-user` is the only route with no authoriser.
 4. API Gateway invokes the single API Lambda with payload format 2.0. The Lambda switches on `event.routeKey`.
 5. For protected routes the Lambda runs `jwtDecode` on the same header (decode only, no signature check, because the gateway has already verified it) and builds `userID = "u#" + sub`. All data access is scoped by this ID.
-6. The Lambda returns `{ data: ... }`. Note that errors are frequently returned as a normal 200 response containing an `error` key rather than a non-2xx status.
+6. The Lambda returns `{ data: ... }` on success, which API Gateway sends as a 200. Errors go through a `respond(statusCode, payload)` helper: validation failures are 400, ownership failures 403, and anything caught by the top-level `catch` is 500.
 
 ### New user flow
 
@@ -143,18 +146,65 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
 | `POST /new-user` | none | Create user, demo board and welcome task |
-| `POST /task-sync` | JWT | Batch of `create`, `update`, `delete` task actions (the main write path) |
-| `POST /rename-category` | JWT | Update `Category` on a list of task IDs |
+| `POST /sync` | JWT | Batch of up to 50 `create`, `update`, `delete` task ops (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
+| `POST /rename-category` | JWT | Update `Category` on a list of task IDs (tasks deleted since the client loaded are skipped) |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits |
 | `POST /delete-board` | JWT | Deletes the board's active tasks, then the board (ownership checked) |
-| `POST /card-emoji` | JWT | Update emoji on a list of task IDs |
-| `POST /board-scores` | JWT | Save `YScore`, `MScore`, `WScore` |
+| `POST /card-emoji` | JWT | Update emoji on a list of task IDs (tasks deleted since the client loaded are skipped) |
+| `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 | `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` |
 
-Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `task-sync`. Their code remains in `handler.js` as comments or unused functions.
+Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. Their code remains in `handler.js` as comments or unused functions.
 
 Gateway settings: HTTP API, CORS open to all origins, default throttling of 10 requests per second with a burst of 10, access logs to CloudWatch with one day retention.
+
+### Task sync
+
+`POST /sync` is the only path that creates, edits or deletes tasks from the client. The logic lives in `src/task_sync.js`. The handler validates the body (at most 50 ops, `ops` must be an array) and returns 400 on failure.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant A as API Lambda (task_sync)
+    participant D as DynamoDB
+
+    F->>A: POST /sync {ops}
+    A->>D: Query boards (consistent read)
+    loop each op, in order
+        alt task is completed or uncompleted, board exists
+            A->>D: TransactWriteItems (task write + board score ADD)
+        else no score change
+            A->>D: Put, Update or Delete on the task
+        end
+    end
+    opt any board score changed
+        A->>D: Query boards again
+    end
+    A-->>F: data.results per opId, data.boards with new scores
+```
+
+Each op is checked before it runs:
+
+- `opId`, `SK` (must start `t#`), `kind`, and `boardID` (must be one of the user's boards) are required.
+- `fields` must be on an allow-list. Anything else, including `PK`, is rejected.
+
+Each op gets one status in `results`:
+
+| Status | Meaning | Client action |
+| --- | --- | --- |
+| `applied` | Written | None |
+| `rejected` | The op can never succeed (bad shape, foreign board, DynamoDB validation error) | Drop it |
+| `retry` | Transient DynamoDB error | Send again later |
+| `gone` | Update to a task that no longer exists | Drop it. No partial item is created |
+| `conflict` | The task or board kept changing during two attempts | Keep it and retry later |
+
+Behaviour that matters when changing this code:
+
+- Ops run sequentially. Parallel transactions on the same board item would cancel each other.
+- A task completed this period adds 1 to every score field it still counts towards. Unticking takes 1 back, but never below zero. Periods come from `src/score_periods.js`, which must match the reset crons (see section 6).
+- A create whose task already exists (an earlier attempt landed but the response was lost) is applied as an update, so scores are not counted twice.
+- Only `CompletedDate` changes move scores. Edits to other fields never do.
 
 ## 5. Data model
 
@@ -195,6 +245,8 @@ gantt
 
 `score_reset.js` picks the field to reset by checking whether the triggering rule's ARN (`event.resources[0]`) contains `weekly`, `monthly` or `yearly`. Renaming a rule would break this. It writes one board at a time and has a default Lambda timeout, so it will not scale to very many boards.
 
+The API side keeps its own copy of the period boundaries in `src/score_periods.js`, used by `POST /sync` to decide whether a completion still counts. The boundaries (Monday, 1st of month, 1 January, 00:00 UTC) must match these cron rules. If the crons change, change that file too.
+
 ## 7. Infrastructure detail
 
 ```mermaid
@@ -232,7 +284,7 @@ Key points:
 - **Domains:** The API is served at `api.vinsp.in` (module `domain_name = "*.vinsp.in"`, `subdomains = ["api"]`). The Cognito managed login is at `auth.listpal.dev.vinsp.in`. The Route 53 hosted zone `vinsp.in` must already exist.
 - **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains, callback URLs and the sign-up URL are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
 - **IAM:** Each Lambda has an inline policy with `Resource: "*"`.
-  - API Lambda: `Query`, `UpdateItem`, `PutItem`, `DeleteItem` plus stream actions.
+  - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem` plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
   - Sign-up: no extra policy (it only calls the public API).
 - **Logging:** Lambda and API access log groups keep logs for one day only.
@@ -286,7 +338,9 @@ How the code packaging works:
 
 ### Local development
 
-There is no local runtime in this repo. The `localdb-functionality` branch (merged in PR #5) relates to the frontend's local database and does not add backend tooling. The `test-data/` scripts talk to the real `ListPal-Dev` table in `eu-west-2`. The `src/package.json` has no real test script.
+There is no local runtime in this repo. The `localdb-functionality` branch (merged in PR #5) relates to the frontend's local database and does not add backend tooling. The `test-data/` scripts talk to the real `ListPal-Dev` table in `eu-west-2`.
+
+Unit tests live in `test/`, a separate package so test-only dependencies stay out of the Lambda zip. Run `yarn install && yarn test` inside it. DynamoDB is mocked, so the tests need no AWS access.
 
 ### Keeping this document current
 
@@ -368,8 +422,7 @@ These are things a reader should know before changing the system. They are not f
 - IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
-- Errors are often returned as HTTP 200 with an `error` field, and the top-level `catch` in `handler.js` logs and returns nothing.
-- Several writes are non-atomic loops or `Promise.all` batches with no transaction (task sync, rename category, board deletion).
+- Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Rename category, card emoji and board deletion are plain loops with no transaction.
 - `delete-board` only deletes tasks that appear in `activeTasksQuery` (not expired ones), so expired tasks can be orphaned until their TTL removes them.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
@@ -381,7 +434,8 @@ These are things a reader should know before changing the system. They are not f
 | Change DynamoDB queries or item shapes | Query builder functions at the bottom of `src/handler.js` |
 | Change throttling, CORS or authoriser | `terraform/apigateway.tf` |
 | Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf`, `signup.tf` |
-| Change cron schedules | `terraform/cronjob.tf` (`crons`) |
+| Change cron schedules | `terraform/cronjob.tf` (`crons`), and `src/score_periods.js` to match |
+| Change how task edits affect scores | `src/task_sync.js` (`POST /sync`) |
 | Change auth, callback URLs or tokens | `terraform/cognito.tf` |
 | Change domains or certificates | `terraform/acm.tf`, `route53.tf`, `variables.tf` |
 | Back up or restore data | `test-data/` (section 9) |
