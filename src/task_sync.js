@@ -4,6 +4,8 @@ const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
 const { periodsContaining } = require("./score_periods");
 
 const MAX_OPS = 50;
+// Bounded so a full batch doesn't burst 50 parallel requests at the on-demand table and the Lambda's sockets.
+const CONCURRENCY = 10;
 const NIL = "nil";
 const KINDS = ["create", "update", "delete"];
 const STRING_FIELDS = ["Description", "Category", "Emoji", "Important", "Link", "CompletedDate", "ExpiryDate", "GSI1-SK", "CreatedDate"];
@@ -40,15 +42,8 @@ function opProblem(op, boards) {
 
 async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
   const ctx = { client, tableName, userID, now, boards: await loadBoards(client, tableName, userID), scoredBoards: new Set() };
-  const results = [];
-
-  // Sequential on purpose: two transactions on the same board item in parallel would cancel each other.
-  for (const op of ops) {
-    const reason = opProblem(op, ctx.boards);
-    if (reason) {
-      results.push({ opId: op?.opId, SK: op?.SK, status: "rejected", reason });
-      continue;
-    }
+  const results = new Array(ops.length);
+  const run = async ([op, i]) => {
     let status;
     try {
       status = await applyOp(ctx, op);
@@ -56,8 +51,30 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
       console.error("Sync op failed:", op.opId, error);
       status = error.name === "ValidationException" ? "rejected" : "retry";
     }
-    results.push({ opId: op.opId, SK: op.SK, status });
-  }
+    results[i] = { opId: op.opId, SK: op.SK, status };
+  };
+
+  const perTask = new Map();
+  ops.forEach(op => {
+    if (typeof op?.SK === "string") perTask.set(op.SK, (perTask.get(op.SK) ?? 0) + 1);
+  });
+
+  // Ops that can move scores share the board item, where parallel transactions would cancel each other, and
+  // repeated tasks must apply in order, so those stay sequential. The rest touch only their own task and never ctx.
+  const concurrent = [];
+  const sequential = [];
+  ops.forEach((op, i) => {
+    const reason = opProblem(op, ctx.boards);
+    if (reason) {
+      results[i] = { opId: op?.opId, SK: op?.SK, status: "rejected", reason };
+      return;
+    }
+    const touchesScores = "CompletedDate" in (op.fields ?? {});
+    (touchesScores || perTask.get(op.SK) > 1 ? sequential : concurrent).push([op, i]);
+  });
+
+  await runLimited(concurrent, CONCURRENCY, run);
+  for (const entry of sequential) await run(entry);
 
   if (ctx.scoredBoards.size) {
     ctx.boards = await loadBoards(client, tableName, userID);
@@ -295,6 +312,14 @@ function isConditionFailure(error) {
   if (error.name === "ConditionalCheckFailedException") return true;
   return error.name === "TransactionCanceledException" &&
     (error.CancellationReasons ?? []).some(reason => reason.Code === "ConditionalCheckFailed");
+}
+
+async function runLimited(items, limit, work) {
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) await work(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
 }
 
 module.exports = { syncTasks, validateSyncBody, ValidationError, MAX_OPS };

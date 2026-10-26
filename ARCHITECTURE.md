@@ -165,7 +165,10 @@ sequenceDiagram
 
     F->>A: POST /sync {ops}
     A->>D: Query boards (consistent read)
-    loop each op, in order
+    par up to 10 at a time (ops without CompletedDate, one op per task)
+        A->>D: Put, conditional Update or Delete on the task
+    end
+    loop then each remaining op, in request order
         opt update that changes CompletedDate
             A->>D: GetItem task (consistent read)
         end
@@ -198,7 +201,7 @@ Each op gets one status in `results`:
 
 Behaviour that matters when changing this code:
 
-- Ops run sequentially. Parallel transactions on the same board item would cancel each other.
+- Ops that change `CompletedDate`, or repeat a task already in the batch, run one at a time in request order, after the others. Parallel transactions on the same board item would cancel each other, and repeated edits to one task must land in order. All other ops touch only their own task, so they run up to 10 at a time (`CONCURRENCY`). Results are returned in request order either way.
 - A task completed this period adds 1 to every score field it still counts towards. Unticking takes 1 back, but never below zero. Periods come from `src/score_periods.js`, which must match the reset crons (see section 6).
 - A create whose task already exists (an earlier attempt landed but the response was lost) is applied as an update, so scores are not counted twice.
 - Only `CompletedDate` changes move scores. Edits to other fields never do.
