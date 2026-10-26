@@ -137,7 +137,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET /active-tasks?boardID=` | JWT | Tasks for a board whose `GSI1-SK` is at or after now (checks board ownership first) |
+| `GET /active-tasks?boardID=` | JWT | Tasks for a board whose `GSI1-SK` is at or after now (ownership checked alongside the task query, 400 without `boardID`) |
 | `GET /task?taskID=` | JWT | One task |
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
@@ -148,6 +148,33 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /delete-board` | JWT | Deletes the board's active tasks, then the board (ownership checked) |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 | `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` |
+
+### Board ownership check
+
+`verifyBoard` is one strongly consistent `GetItem` on `(userID, boardID)`, projecting only `SK`. The ID must start `b#` and be longer than the prefix, so the user item, a task or a GSI1 partition key can't pass as a board. The read is consistent because the frontend can open or delete a board moments after creating it.
+
+`POST /delete-board` and `POST /board-scores` run the check before writing anything. `GET /active-tasks` runs it at the same time as the task query, because ownership never changes and the tasks are discarded on a 403. The task query only starts for a well-formed board ID, so `"u#"` or `"b#"` (the GSI1 partitions holding every user and every board) are never read.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant A as API Lambda
+    participant D as DynamoDB
+
+    F->>A: GET /active-tasks?boardID=b#...
+    par ownership check
+        A->>D: GetItem PK = userID, SK = boardID (consistent, SK only)
+        D-->>A: item or nothing
+    and task read
+        A->>D: Query GSI1, GSI1-PK = boardID, GSI1-SK >= now
+        D-->>A: tasks
+    end
+    alt board item found
+        A-->>F: 200 with the tasks
+    else no board item
+        A-->>F: 403, tasks discarded
+    end
+```
 
 Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. Their code remains in `handler.js` as comments or unused functions.
 
@@ -223,6 +250,7 @@ DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S
 Access patterns:
 
 - Boards for a user: query `PK = u#...` and `begins_with(SK, "b#")`. Strongly consistent, because scores are read straight after a sync.
+- One of the user's boards (ownership check): `GetItem` on `PK = u#...`, `SK = b#<id>`. Strongly consistent, because a board can be used straight after it is created.
 - Active tasks for a board: query `GSI1` with `GSI1-PK = b#<id>` and `GSI1-SK >= now`. The string `"nil"` sorts after numeric strings, so tasks with no expiry stay "active".
 - All boards across all users (used by the score reset): query `GSI1` with `GSI1-PK = "b#"`.
 
