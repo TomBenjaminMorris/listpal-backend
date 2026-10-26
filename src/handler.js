@@ -1,5 +1,5 @@
 "use strict";
-const { DynamoDBClient, QueryCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
 const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
@@ -32,11 +32,18 @@ module.exports.handler = async (event) => {
     switch (event.routeKey) {
       //// GET ACTIVE TASKS ////
       case "GET /active-tasks":
-        valid = await verifyBoard(userID, params.boardID);
+        if (typeof params?.boardID !== "string") {
+          return respond(400, { error: "boardID is required" });
+        }
+        // A board's owner never changes, so the task read can run alongside the check and be discarded on failure.
+        // Only board IDs start it: "u#" and "b#" are GSI1 partitions holding every user's items.
+        [valid, readResult] = await Promise.all([
+          verifyBoard(userID, params.boardID),
+          isBoardID(params.boardID) ? query(activeTasksQuery(params.boardID)) : undefined
+        ]);
         if (!valid) {
           return respond(403, { error: "requested board does not belong to the currently logged in user" });
         }
-        readResult = await query(activeTasksQuery(params.boardID));
         break;
 
 
@@ -235,15 +242,21 @@ module.exports.handler = async (event) => {
 }
 
 
+// The user item and tasks share the user's partition with their boards, so the prefix stops them passing as boards
+function isBoardID(boardID) {
+  return typeof boardID === "string" && boardID.startsWith("b#") && boardID.length > 2;
+}
+
 async function verifyBoard(userID, boardID) {
-  let returnVal = false
-  const boards = await query(boardsPerUserQuery(userID));
-  boards.Items.forEach(board => {
-    if (board.SK.S == boardID) {
-      returnVal = true
-    }
-  });
-  return returnVal
+  if (!isBoardID(boardID)) return false;
+  const result = await client.send(new GetItemCommand({
+    TableName: tableName,
+    Key: { PK: { S: userID }, SK: { S: boardID } },
+    ProjectionExpression: "SK",
+    // The frontend can open or delete a board moments after creating it
+    ConsistentRead: true
+  }));
+  return !!result.Item;
 }
 
 async function query(input) {
