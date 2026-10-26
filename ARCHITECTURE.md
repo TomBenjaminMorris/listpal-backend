@@ -145,7 +145,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /sync` | JWT | Batch of up to 50 `create`, `update`, `delete` task ops (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits |
-| `POST /delete-board` | JWT | Deletes the board's active tasks, then the board (ownership checked) |
+| `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 | `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` |
 
@@ -173,6 +173,37 @@ sequenceDiagram
         A-->>F: 200 with the tasks
     else no board item
         A-->>F: 403, tasks discarded
+    end
+```
+
+### Board deletion
+
+`POST /delete-board` checks ownership first, then reads the board's tasks from `GSI1` with no sort key condition, so ticked tasks past their expiry are deleted too rather than waiting for the TTL. The query projects only `SK` and follows `LastEvaluatedKey`, so boards beyond one 1 MB page are fully deleted. Each page is deleted with `BatchWriteItem`, 25 keys at a time (its limit), one batch after another. Keys are built from the caller's `userID`, so nothing outside their partition can be deleted.
+
+DynamoDB can return part of a batch as `UnprocessedItems` when throttled. Those are resent after 100, 200, 400 and 800 ms, five attempts in all. If any remain, the request fails with a 500 that names how many tasks were left. The board item is deleted only after all its tasks, so a failure partway leaves the board in place and the user can delete it again. Task text is not logged.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant A as API Lambda
+    participant D as DynamoDB
+
+    F->>A: POST /delete-board {boardID}
+    A->>D: GetItem PK = userID, SK = boardID (consistent, SK only)
+    alt no board item
+        A-->>F: 403, nothing deleted
+    else board item found
+        loop each page (LastEvaluatedKey)
+            A->>D: Query GSI1, GSI1-PK = boardID (SK only)
+            loop each 25 tasks
+                A->>D: BatchWriteItem 25 deletes
+                opt UnprocessedItems
+                    A->>D: resend them with backoff, up to 5 attempts in all
+                end
+            end
+        end
+        A->>D: DeleteItem the board
+        A-->>F: 200
     end
 ```
 
@@ -252,6 +283,7 @@ Access patterns:
 - Boards for a user: query `PK = u#...` and `begins_with(SK, "b#")`. Strongly consistent, because scores are read straight after a sync.
 - One of the user's boards (ownership check): `GetItem` on `PK = u#...`, `SK = b#<id>`. Strongly consistent, because a board can be used straight after it is created.
 - Active tasks for a board: query `GSI1` with `GSI1-PK = b#<id>` and `GSI1-SK >= now`. The string `"nil"` sorts after numeric strings, so tasks with no expiry stay "active".
+- All tasks on a board, expired ones included (used by board deletion): query `GSI1` with `GSI1-PK = b#<id>` and no sort key condition, following `LastEvaluatedKey`.
 - All boards across all users (used by the score reset): query `GSI1` with `GSI1-PK = "b#"`.
 
 Reference material: `terraform/config/db-schema.json` is a NoSQL Workbench model and `db_import.json` is a small seed set. Both pre-date some later attributes.
@@ -314,7 +346,7 @@ Key points:
 - **Domains:** The API is served at `api.vinsp.in` (module `domain_name = "*.vinsp.in"`, `subdomains = ["api"]`). The Cognito managed login is at `auth.listpal.dev.vinsp.in`. The Route 53 hosted zone `vinsp.in` must already exist.
 - **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains, callback URLs and the sign-up URL are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
 - **IAM:** Each Lambda has an inline policy with `Resource: "*"`.
-  - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem` plus stream actions.
+  - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem`, `BatchWriteItem` (board deletion) plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
   - Sign-up: no extra policy (it only calls the public API).
 - **Logging:** Lambda and API access log groups keep logs for one day only.
@@ -433,8 +465,7 @@ These are things a reader should know before changing the system. They are not f
 - IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
-- Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is a plain loop with no transaction.
-- `delete-board` only deletes tasks that appear in `activeTasksQuery` (not expired ones), so expired tasks can be orphaned until their TTL removes them.
+- Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is not atomic either: a failure partway leaves the board and some of its tasks, and deleting it again finishes the job.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
 ## 11. Where to look

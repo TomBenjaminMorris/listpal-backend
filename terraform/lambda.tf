@@ -31,7 +31,8 @@ module "lambda_function" {
                     "dynamodb:GetItem",
                     "dynamodb:UpdateItem",
                     "dynamodb:PutItem",
-                    "dynamodb:DeleteItem"
+                    "dynamodb:DeleteItem",
+                    "dynamodb:BatchWriteItem"
                 ],
                 "Resource": "*"
             }
