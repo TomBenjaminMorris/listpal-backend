@@ -1,5 +1,5 @@
 "use strict";
-const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand, BatchWriteItemCommand } = require("@aws-sdk/client-dynamodb");
 const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
@@ -590,26 +590,37 @@ function deleteBoard(userID, boardID) {
   }
 }
 
+// Every task on the board, expired ones included, a page at a time; batches of 25 are BatchWriteItem's limit.
+// Keys use the caller's userID, so nothing outside their partition can be deleted.
 async function deleteBoardTasks(userID, boardID) {
-  try {
-    const readResult = await query(activeTasksQuery(boardID));
-    console.log("Read tasks:", JSON.stringify(readResult));
-
-    if (!readResult.Items || readResult.Items.length === 0) {
-      console.log("No tasks found for board", boardID);
-      return;
-    }
-
-    const deletePromises = readResult.Items.map(task => {
-      return remove(deleteTask(userID, task.SK.S));
+  let ExclusiveStartKey;
+  do {
+    const page = await query({
+      TableName: tableName,
+      IndexName: "GSI1",
+      KeyConditionExpression: "#pk = :pk",
+      ProjectionExpression: "SK",
+      ExpressionAttributeNames: { "#pk": "GSI1-PK" },
+      ExpressionAttributeValues: { ":pk": { S: boardID } },
+      ExclusiveStartKey
     });
+    const keys = (page.Items ?? []).map(item => ({ PK: { S: userID }, SK: item.SK }));
+    for (let i = 0; i < keys.length; i += 25) {
+      await batchDelete(keys.slice(i, i + 25));
+    }
+    ExclusiveStartKey = page.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+}
 
-    await Promise.all(deletePromises);
-    console.log("All tasks deleted successfully");
-  } catch (error) {
-    console.error("Error deleting tasks for board:", boardID, error);
-    throw new Error(`Batch update failed: ${error.message}`);
+// DynamoDB may hand back part of a batch when throttled; resend just those with a short backoff
+async function batchDelete(keys) {
+  let requests = keys.map(Key => ({ DeleteRequest: { Key } }));
+  for (let attempt = 0; requests.length && attempt < 5; attempt++) {
+    if (attempt) await new Promise(resolve => setTimeout(resolve, 50 * 2 ** attempt));
+    const result = await client.send(new BatchWriteItemCommand({ RequestItems: { [tableName]: requests } }));
+    requests = result.UnprocessedItems?.[tableName] ?? [];
   }
+  if (requests.length) throw new Error(`${requests.length} tasks could not be deleted`);
 }
 
 
