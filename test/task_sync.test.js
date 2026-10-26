@@ -30,6 +30,7 @@ const sync = (client, ops, now = WEDNESDAY) => syncTasks(client, TABLE, USER, op
 const op = (kind, fields = {}, overrides = {}) => ({ opId: "t#1:1", SK: "t#1", boardID: BOARD, kind, fields, ...overrides });
 const inputs = (mock, command) => mock.commandCalls(command).map(call => call.args[0].input);
 const scoreUpdate = transactInput => transactInput.TransactItems[1].Update;
+const delay = ms => new Promise(resolve => setTimeout(() => resolve({}), ms));
 
 const conditionalCheckFailed = () => Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" });
 
@@ -195,6 +196,58 @@ test("a transient DynamoDB error asks the client to retry and does not stop the 
   const result = await sync(client, [op("create"), op("create", {}, { opId: "t#2:1", SK: "t#2" })]);
 
   assert.deepEqual(result.results.map(r => r.status), ["retry", "applied"]);
+});
+
+test("results keep request order when an earlier op finishes later", async () => {
+  const { client, mock } = setup();
+  mock.on(UpdateItemCommand, { Key: marshall({ PK: USER, SK: "t#1" }) }).callsFake(() => delay(20));
+  const ops = ["t#1", "t#2", "t#3"].map(SK => op("update", { Category: "Renamed" }, { opId: `${SK}:1`, SK }));
+
+  const result = await sync(client, ops);
+
+  assert.deepEqual(result.results.map(r => r.SK), ["t#1", "t#2", "t#3"]);
+  assert.deepEqual(result.results.map(r => r.status), ["applied", "applied", "applied"]);
+});
+
+test("ops that change scores still run one at a time alongside other ops", async () => {
+  const { client, mock } = setup({ task: { CompletedDate: "nil" } });
+  const events = [];
+  mock.on(TransactWriteItemsCommand).callsFake(async () => {
+    events.push("start");
+    await delay(10);
+    events.push("end");
+    return {};
+  });
+  const ops = [
+    op("update", { CompletedDate: THIS_WEEK }),
+    op("update", { Category: "Renamed" }, { opId: "t#2:1", SK: "t#2" }),
+    op("update", { CompletedDate: THIS_WEEK }, { opId: "t#3:1", SK: "t#3" })
+  ];
+
+  const result = await sync(client, ops);
+
+  assert.deepEqual(result.results.map(r => r.status), ["applied", "applied", "applied"]);
+  assert.deepEqual(events, ["start", "end", "start", "end"]);
+  assert.deepEqual(result.boards.map(board => board.SK), [BOARD]);
+});
+
+test("repeated ops on one task apply in request order", async () => {
+  const { client, mock } = setup();
+  const events = [];
+  mock.on(UpdateItemCommand).callsFake(async input => {
+    const Description = unmarshall(input.ExpressionAttributeValues)[":f0"];
+    events.push(`start ${Description}`);
+    // The first write is slower, so running them together would finish out of order
+    await delay(Description === "a" ? 20 : 0);
+    events.push(`end ${Description}`);
+    return {};
+  });
+  const ops = [op("update", { Description: "a" }), op("update", { Description: "b" }, { opId: "t#1:2" })];
+
+  const result = await sync(client, ops);
+
+  assert.deepEqual(result.results.map(r => r.opId), ["t#1:1", "t#1:2"]);
+  assert.deepEqual(events, ["start a", "end a", "start b", "end b"]);
 });
 
 test("a delete is applied without touching scores", async () => {
