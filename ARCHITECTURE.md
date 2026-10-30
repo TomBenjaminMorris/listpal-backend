@@ -138,7 +138,6 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | Route | Auth | Purpose |
 | --- | --- | --- |
 | `GET /active-tasks?boardID=` | JWT | Tasks for a board whose `GSI1-SK` is at or after now (ownership checked alongside the task query, 400 without `boardID`) |
-| `GET /task?taskID=` | JWT | One task |
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
 | `POST /new-user` | none | Create user, demo board and welcome task |
@@ -206,7 +205,7 @@ sequenceDiagram
     end
 ```
 
-Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` were removed outright once the frontend sent board creates and settings through `sync` instead. Their code remains in `handler.js` as comments or unused functions.
+The older per-field task routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` were removed once the frontend sent board creates and settings through `sync` instead. None of their code remains; it is in git history.
 
 Gateway settings: HTTP API, CORS open to all origins with preflights cacheable for 2 hours (`max_age = 7200`, so browsers skip the `OPTIONS` round trip on repeat requests), default throttling of 50 requests per second with a burst of 100, access logs to CloudWatch with one day retention.
 
