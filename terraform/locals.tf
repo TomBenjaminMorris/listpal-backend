@@ -60,32 +60,12 @@ locals {
       route     = "POST /user-theme"
       protected = true
     },
-    new_board = {
-      route     = "POST /new-board"
-      protected = true
-    },
-    rename_board = {
-      route     = "POST /rename-board"
-      protected = true
-    },
-    board_emoji = {
-      route     = "POST /board-emoji"
-      protected = true
-    },
-    board_category_order = {
-      route     = "POST /board-category-order"
-      protected = true
-    },
     delete_board = {
       route     = "POST /delete-board"
       protected = true
     },
     board_scores = {
       route     = "POST /board-scores"
-      protected = true
-    },
-    board_targets = {
-      route     = "POST /board-targets"
       protected = true
     }
   }
