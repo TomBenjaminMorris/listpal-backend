@@ -153,6 +153,56 @@ test("POST /board-scores with a negative score is a 400", async () => {
   assert.equal(response.statusCode, 400);
 });
 
+const TARGETS = { YTarget: 365, MTarget: 31, WTarget: 7 };
+const settingRoutes = [
+  ["POST /rename-board", { name: "Home" }],
+  ["POST /board-emoji", { emoji: "🏡" }],
+  ["POST /board-category-order", { categoryOrder: "[]" }],
+  ["POST /board-targets", { targets: TARGETS }]
+];
+const conditionalCheckFailed = () => Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" });
+
+for (const [route, fields] of settingRoutes) {
+  test(`${route} writes only to an existing board`, async () => {
+    mock.on(UpdateItemCommand).resolves({});
+    const response = await request(route, { body: { boardID: "b#mine", ...fields } });
+
+    assert.deepEqual(response, { data: {} });
+    const [update] = mock.commandCalls(UpdateItemCommand).map(call => call.args[0].input);
+    assert.deepEqual(update.Key, { PK: { S: "u#user" }, SK: { S: "b#mine" } });
+    assert.equal(update.ConditionExpression, "attribute_exists(SK)");
+  });
+
+  test(`${route} for a deleted board is a 404`, async () => {
+    mock.on(UpdateItemCommand).rejects(conditionalCheckFailed());
+    const response = await request(route, { body: { boardID: "b#deleted", ...fields } });
+
+    assert.equal(response.statusCode, 404);
+  });
+
+  test(`${route} can't write to the user item`, async () => {
+    const response = await request(route, { body: { boardID: "u#user", ...fields } });
+
+    assert.equal(response.statusCode, 403);
+    assert.equal(mock.commandCalls(UpdateItemCommand).length, 0);
+  });
+}
+
+test("POST /board-targets with a missing or zero target is a 400", async () => {
+  for (const targets of [undefined, { YTarget: 365, MTarget: 31 }, { ...TARGETS, WTarget: 0 }, { ...TARGETS, MTarget: "lots" }]) {
+    const response = await request("POST /board-targets", { body: { boardID: "b#mine", targets } });
+    assert.equal(response.statusCode, 400, JSON.stringify(targets));
+  }
+  assert.equal(mock.commandCalls(UpdateItemCommand).length, 0);
+});
+
+test("a board setting write that fails for another reason is a 500", async t => {
+  mock.on(UpdateItemCommand).rejects(new Error("DynamoDB is down"));
+  t.mock.method(console, "error", () => {});
+  const response = await request("POST /board-emoji", { body: { boardID: "b#mine", emoji: "🏡" } });
+  assert.equal(response.statusCode, 500);
+});
+
 test("an unexpected failure is a 500 rather than an empty 200", async () => {
   mock.on(QueryCommand).rejects(new Error("DynamoDB is down"));
   const response = await request("GET /boards");
