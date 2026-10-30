@@ -54,7 +54,7 @@ function opProblem(op, boards) {
 // No ownership check is needed: the key is built from the caller's userID, and a missing board is reported as gone.
 function boardOpProblem(op) {
   if (op.SK.length <= "b#".length) return "invalid SK";
-  if (op.kind !== "update") return "invalid kind";
+  if (op.kind !== "create" && op.kind !== "update") return "invalid kind";
   if (op.boardID !== op.SK) return "invalid boardID";
   const fields = op.fields ?? {};
   if (typeof fields !== "object" || Array.isArray(fields)) return "invalid fields";
@@ -62,6 +62,7 @@ function boardOpProblem(op) {
     // hasOwn, so a field named after an Object.prototype member such as "constructor" can't pass
     if (!Object.hasOwn(BOARD_FIELDS, name) || !BOARD_FIELDS[name](value)) return `invalid field ${name}`;
   }
+  if (op.kind === "create" && !("Board" in fields)) return "missing field Board";
   return null;
 }
 
@@ -98,28 +99,40 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
     if (typeof op?.SK === "string") perTask.set(op.SK, (perTask.get(op.SK) ?? 0) + 1);
   });
 
-  // Ops that can move scores share the board item, where parallel transactions would cancel each other, and
-  // repeated tasks must apply in order, so those stay sequential. The rest touch only their own task and never ctx.
   const boardOps = [];
-  const concurrent = [];
-  const sequential = [];
-  ops.forEach((op, i) => {
+  const taskOps = [];
+  ops.forEach((op, i) => (op && isBoardOp(op) ? boardOps : taskOps).push([op, i]));
+  const accepted = entries => entries.filter(([op, i]) => {
     const reason = opProblem(op, ctx.boards);
-    if (reason) {
-      results[i] = { opId: op?.opId, SK: op?.SK, status: "rejected", reason };
-      return;
-    }
-    if (isBoardOp(op)) {
-      boardOps.push([op, i]);
-      return;
-    }
-    const touchesScores = "CompletedDate" in (op.fields ?? {});
-    (touchesScores || perTask.get(op.SK) > 1 ? sequential : concurrent).push([op, i]);
+    if (reason) results[i] = { opId: op?.opId, SK: op?.SK, status: "rejected", reason };
+    return !reason;
   });
 
   // A plain write to a board item cancels any tick transaction updating it at the same moment, so board ops
   // finish before task ops start. They are rare and may repeat a board, so they run one at a time in order.
-  for (const entry of boardOps) await run(entry);
+  for (const entry of accepted(boardOps)) await run(entry);
+
+  // A create that hit a transient error will be resent, so its board's tasks must wait for it rather than be
+  // rejected as "unknown board", which the client would drop
+  const unmadeBoards = new Set(boardOps
+    .filter(([op, i]) => op.kind === "create" && results[i].status === "retry")
+    .map(([op]) => op.SK));
+  const waiting = taskOps.filter(([op, i]) => {
+    if (!unmadeBoards.has(op?.boardID)) return true;
+    results[i] = { opId: op.opId, SK: op.SK, status: "retry" };
+    return false;
+  });
+
+  // Checked after the board ops, so tasks for a board created in this batch pass the ownership check.
+  // Ops that can move scores share the board item, where parallel transactions would cancel each other, and
+  // repeated tasks must apply in order, so those stay sequential. The rest touch only their own task and never ctx.
+  const concurrent = [];
+  const sequential = [];
+  accepted(waiting).forEach(([op, i]) => {
+    const touchesScores = "CompletedDate" in (op.fields ?? {});
+    (touchesScores || perTask.get(op.SK) > 1 ? sequential : concurrent).push([op, i]);
+  });
+
   await runLimited(concurrent, CONCURRENCY, run);
   for (const entry of sequential) await run(entry);
 
@@ -137,7 +150,7 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
 }
 
 function applyOp(ctx, op) {
-  if (isBoardOp(op)) return updateBoard(ctx, op);
+  if (isBoardOp(op)) return op.kind === "create" ? createBoard(ctx, op) : updateBoard(ctx, op);
   switch (op.kind) {
     case "create":
       return createTask(ctx, op);
@@ -246,6 +259,40 @@ async function updateTask(ctx, op) {
     }
   }
   return "conflict";
+}
+
+async function createBoard(ctx, op) {
+  // Already there, so an earlier attempt landed but its ack was lost: apply the fields without resetting the scores
+  if (ctx.boards.has(op.SK)) return updateBoard(ctx, op);
+  const scores = { WScore: 0, MScore: 0, YScore: 0 };
+  const item = {
+    PK: ctx.userID,
+    SK: op.SK,
+    EntityType: "Board",
+    "GSI1-PK": "b#",
+    "GSI1-SK": op.SK,
+    ...scores,
+    WTarget: 7,
+    MTarget: 31,
+    YTarget: 365,
+    Emoji: "🚀",
+    CategoryOrder: "[]",
+    ...op.fields
+  };
+  try {
+    await ctx.client.send(new PutItemCommand({
+      TableName: ctx.tableName,
+      Item: marshall(item),
+      ConditionExpression: "attribute_not_exists(SK)"
+    }));
+    ctx.boards.set(op.SK, { SK: op.SK, ...scores });
+    return "applied";
+  } catch (error) {
+    if (!isConditionFailure(error)) throw error;
+    // Another request created it since the boards were read, so read its real scores before ticks use them
+    ctx.boards = await loadBoards(ctx.client, ctx.tableName, ctx.userID);
+    return updateBoard(ctx, op);
+  }
 }
 
 async function updateBoard(ctx, op) {
