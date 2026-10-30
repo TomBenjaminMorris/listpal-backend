@@ -29,7 +29,7 @@ listpal-backend/
 ├── CLAUDE.md                  Working rules for AI assistants, including the documentation rules
 ├── src/                       All Lambda code (one shared package, one zip)
 │   ├── handler.js             API Lambda: every HTTP route
-│   ├── task_sync.js           Batch task sync (POST /sync), including score changes
+│   ├── task_sync.js           Batch task and board settings sync (POST /sync), including score changes
 │   ├── score_periods.js       Which score periods (W, M, Y) a completion counts towards
 │   ├── score_reset.js         Cron Lambda: zeroes board scores
 │   ├── sign_up.js             Cognito post-confirmation trigger
@@ -142,12 +142,12 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
 | `POST /new-user` | none | Create user, demo board and welcome task |
-| `POST /sync` | JWT | Batch of up to 50 `create`, `update`, `delete` task ops (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
+| `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `update` on board settings (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
-| `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits |
+| `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits. The last three are being replaced by board ops in `POST /sync` |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
-| `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` |
+| `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget`. Being replaced by board ops in `POST /sync` |
 
 ### Board ownership check
 
@@ -213,7 +213,7 @@ Gateway settings: HTTP API, CORS open to all origins with preflights cacheable f
 
 ### Task sync
 
-`POST /sync` is the only path that creates, edits or deletes tasks from the client. The logic lives in `src/task_sync.js`. The handler validates the body (at most 50 ops, `ops` must be an array) and returns 400 on failure.
+`POST /sync` is the only path that creates, edits or deletes tasks from the client. It also takes board settings updates (see "Board ops" below). The logic lives in `src/task_sync.js`. The handler validates the body (at most 50 ops, `ops` must be an array) and returns 400 on failure.
 
 ```mermaid
 sequenceDiagram
@@ -223,7 +223,10 @@ sequenceDiagram
 
     F->>A: POST /sync {ops}
     A->>D: Query boards (consistent read)
-    par up to 10 at a time (ops without CompletedDate, one op per task)
+    loop each board op, in request order
+        A->>D: UpdateItem on the board, if attribute_exists(SK)
+    end
+    par then up to 10 at a time (ops without CompletedDate, one op per task)
         A->>D: Put, conditional Update or Delete on the task
     end
     loop then each remaining op, in request order
@@ -244,7 +247,7 @@ sequenceDiagram
 
 Each op is checked before it runs:
 
-- `opId`, `SK` (must start `t#`), `kind`, and `boardID` (must be one of the user's boards) are required.
+- `opId`, `SK` (must start `t#`, or `b#` for a board op), `kind`, and `boardID` are required. A task op's `boardID` must be one of the user's boards. A board op's must equal its `SK`.
 - `fields` must be on an allow-list. Anything else, including `PK`, is rejected.
 
 Each op gets one status in `results`:
@@ -254,7 +257,7 @@ Each op gets one status in `results`:
 | `applied` | Written | None |
 | `rejected` | The op can never succeed (bad shape, foreign board, DynamoDB validation error) | Drop it |
 | `retry` | Transient DynamoDB error | Send again later |
-| `gone` | Update to a task that no longer exists | Drop it. No partial item is created |
+| `gone` | Update to a task or board that no longer exists | Drop it. No partial item is created |
 | `conflict` | The task or board kept changing during two attempts | Keep it and retry later |
 
 Behaviour that matters when changing this code:
@@ -265,6 +268,23 @@ Behaviour that matters when changing this code:
 - Only `CompletedDate` changes move scores. Edits to other fields never do.
 - An update without `CompletedDate` is a single `UpdateItem` conditioned on `attribute_exists(SK)`, so a deleted task returns `gone` instead of coming back as a partial item. Only completion changes read the task first, because the score change depends on its current `CompletedDate`.
 - A resent completion that an earlier attempt already applied changes no scores, but its board is still returned in `data.boards` with the current scores. The client may have read scores before that earlier attempt landed.
+
+#### Board ops
+
+An op whose `SK` starts `b#` updates that board's settings. It must have `kind: "update"` and a `boardID` equal to its `SK`. Allowed fields:
+
+| Field | Rule |
+| --- | --- |
+| `Board` | Non-empty string |
+| `Emoji` | String |
+| `CategoryOrder` | String holding a JSON array of strings, stored as a string as before |
+| `WTarget`, `MTarget`, `YTarget` | Whole number, 1 or more |
+
+Scores can't be set this way: they change only through ticks and `POST /board-scores`.
+
+- The write is one `UpdateItem` keyed on the caller's `userID` and conditioned on `attribute_exists(SK)`. A board missing from the initial read, or deleted since, returns `gone`, so an edit that arrives after a delete can't bring the board back as a partial item.
+- Board ops run before every task op, one at a time in request order. A plain write to a board item while a tick's `TransactWriteItems` is updating it would cancel the transaction, so the two never overlap within a batch.
+- A board op with no fields is `applied` without a write.
 
 ## 5. Data model
 
@@ -477,7 +497,7 @@ These are things a reader should know before changing the system. They are not f
 | Change throttling, CORS or authoriser | `terraform/apigateway.tf` |
 | Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf`, `signup.tf` |
 | Change cron schedules | `terraform/cronjob.tf` (`crons`), and `src/score_periods.js` to match |
-| Change how task edits affect scores | `src/task_sync.js` (`POST /sync`) |
+| Change how task edits affect scores, or which board settings `POST /sync` accepts | `src/task_sync.js` (`POST /sync`) |
 | Change auth, callback URLs or tokens | `terraform/cognito.tf` |
 | Change domains or certificates | `terraform/acm.tf`, `route53.tf`, `variables.tf` |
 | Back up or restore data | `test-data/` (section 9) |

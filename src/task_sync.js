@@ -12,6 +12,16 @@ const STRING_FIELDS = ["Description", "Category", "Emoji", "Important", "Link", 
 const NUMBER_FIELDS = ["ExpiryDateTTL"];
 // GSI key attributes cannot hold an empty string, so DynamoDB would reject the write on every retry.
 const NON_EMPTY_FIELDS = ["GSI1-SK"];
+const isTarget = value => Number.isInteger(value) && value >= 1;
+const BOARD_FIELDS = {
+  Board: value => typeof value === "string" && value !== "",
+  Emoji: value => typeof value === "string",
+  // Stored as a JSON string, as GET /boards returns it and the client parses it
+  CategoryOrder: isCategoryOrder,
+  WTarget: isTarget,
+  MTarget: isTarget,
+  YTarget: isTarget
+};
 
 class ValidationError extends Error { }
 
@@ -24,6 +34,7 @@ function validateSyncBody(body) {
 // A reason here means the op can never succeed, so the client should drop it rather than retry.
 function opProblem(op, boards) {
   if (!op || typeof op.opId !== "string") return "missing opId";
+  if (isBoardOp(op)) return boardOpProblem(op);
   if (typeof op.SK !== "string" || !op.SK.startsWith("t#")) return "invalid SK";
   if (!KINDS.includes(op.kind)) return "invalid kind";
   if (!boards.has(op.boardID)) return "unknown board";
@@ -38,6 +49,34 @@ function opProblem(op, boards) {
     return `invalid field ${name}`;
   }
   return null;
+}
+
+// No ownership check is needed: the key is built from the caller's userID, and a missing board is reported as gone.
+function boardOpProblem(op) {
+  if (op.SK.length <= "b#".length) return "invalid SK";
+  if (op.kind !== "update") return "invalid kind";
+  if (op.boardID !== op.SK) return "invalid boardID";
+  const fields = op.fields ?? {};
+  if (typeof fields !== "object" || Array.isArray(fields)) return "invalid fields";
+  for (const [name, value] of Object.entries(fields)) {
+    // hasOwn, so a field named after an Object.prototype member such as "constructor" can't pass
+    if (!Object.hasOwn(BOARD_FIELDS, name) || !BOARD_FIELDS[name](value)) return `invalid field ${name}`;
+  }
+  return null;
+}
+
+function isBoardOp(op) {
+  return typeof op.SK === "string" && op.SK.startsWith("b#");
+}
+
+function isCategoryOrder(value) {
+  if (typeof value !== "string") return false;
+  try {
+    const order = JSON.parse(value);
+    return Array.isArray(order) && order.every(category => typeof category === "string");
+  } catch {
+    return false;
+  }
 }
 
 async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
@@ -61,6 +100,7 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
 
   // Ops that can move scores share the board item, where parallel transactions would cancel each other, and
   // repeated tasks must apply in order, so those stay sequential. The rest touch only their own task and never ctx.
+  const boardOps = [];
   const concurrent = [];
   const sequential = [];
   ops.forEach((op, i) => {
@@ -69,10 +109,17 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
       results[i] = { opId: op?.opId, SK: op?.SK, status: "rejected", reason };
       return;
     }
+    if (isBoardOp(op)) {
+      boardOps.push([op, i]);
+      return;
+    }
     const touchesScores = "CompletedDate" in (op.fields ?? {});
     (touchesScores || perTask.get(op.SK) > 1 ? sequential : concurrent).push([op, i]);
   });
 
+  // A plain write to a board item cancels any tick transaction updating it at the same moment, so board ops
+  // finish before task ops start. They are rare and may repeat a board, so they run one at a time in order.
+  for (const entry of boardOps) await run(entry);
   await runLimited(concurrent, CONCURRENCY, run);
   for (const entry of sequential) await run(entry);
 
@@ -90,6 +137,7 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
 }
 
 function applyOp(ctx, op) {
+  if (isBoardOp(op)) return updateBoard(ctx, op);
   switch (op.kind) {
     case "create":
       return createTask(ctx, op);
@@ -151,7 +199,7 @@ async function updateTask(ctx, op) {
   // whose condition stops a deleted task coming back as a partial item
   if (!("CompletedDate" in fields)) {
     try {
-      await ctx.client.send(new UpdateItemCommand(taskUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
+      await ctx.client.send(new UpdateItemCommand(itemUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
       return "applied";
     } catch (error) {
       if (error.name === "ConditionalCheckFailedException") return "gone";
@@ -179,7 +227,7 @@ async function updateTask(ctx, op) {
       delta = -1;
     }
 
-    const update = taskUpdate(ctx, op.SK, fields, current.CompletedDate);
+    const update = itemUpdate(ctx, op.SK, fields, current.CompletedDate);
     try {
       if (periods.length) {
         await transact(ctx, [{ Update: update }, scoreChange(ctx, boardID, periods, delta)]);
@@ -200,6 +248,20 @@ async function updateTask(ctx, op) {
   return "conflict";
 }
 
+async function updateBoard(ctx, op) {
+  if (!ctx.boards.has(op.SK)) return "gone";
+  const fields = op.fields ?? {};
+  if (!Object.keys(fields).length) return "applied";
+  try {
+    // The condition stops an edit that lands after a delete from coming back as a ghost board
+    await ctx.client.send(new UpdateItemCommand(itemUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
+    return "applied";
+  } catch (error) {
+    if (error.name === "ConditionalCheckFailedException") return "gone";
+    throw error;
+  }
+}
+
 async function deleteTask(ctx, op) {
   await ctx.client.send(new DeleteItemCommand({
     TableName: ctx.tableName,
@@ -209,7 +271,7 @@ async function deleteTask(ctx, op) {
 }
 
 // expectedCompletedDate: undefined means the item has no CompletedDate; pass checkCompletion: false to skip the check
-function taskUpdate(ctx, SK, fields, expectedCompletedDate, { checkCompletion = true } = {}) {
+function itemUpdate(ctx, SK, fields, expectedCompletedDate, { checkCompletion = true } = {}) {
   const names = {};
   const values = {};
   const sets = Object.keys(fields).map((name, i) => {
