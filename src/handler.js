@@ -21,7 +21,6 @@ module.exports.handler = async (event) => {
     const params = event.queryStringParameters;
     const body = event.body && JSON.parse(event['body']);
     let userID = "";
-    // console.log("TTT", JSON.stringify(body));
     if (event.headers.authorization) {
       const token = event.headers.authorization;
       const decoded = jwtDecode(token);
@@ -44,30 +43,6 @@ module.exports.handler = async (event) => {
         if (!valid) {
           return respond(403, { error: "requested board does not belong to the currently logged in user" });
         }
-        break;
-
-
-      //// GET EXPIRED TASKS ////
-      // case "GET /expired-tasks":
-      //   valid = await verifyBoard(userID, params.boardID);
-      //   if (!valid) {
-      //     return {
-      //       error: "requested board does not belong to the currently logged in user"
-      //     }
-      //   }
-      //   readResult = await query(expiredTasksQuery(params.boardID));
-      //   break;
-
-
-      //// GET ALL TASKS ////
-      // case "GET /all-tasks":
-      //   readResult = await query(allTasksQuery(userID));
-      //   break;
-
-
-      //// GET TASKS ////
-      case "GET /task":
-        readResult = await query(taskQuery(userID, params.taskID));
         break;
 
 
@@ -110,55 +85,6 @@ module.exports.handler = async (event) => {
           throw error;
         }
         break;
-
-
-      //// UPDATE TASK DESCRIPTION ////
-      // case "POST /task-description":
-      //   writeResult = await update(updateTaskDescription(userID, body.taskID, body.description));
-      //   break;
-
-
-      //// UPDATE TASK DETAILS ////
-      // case "POST /task-details":
-      //   writeResult = await update(updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link));
-      //   break;
-
-
-      //// UPDATE TASK CHECKED ////
-      // case "POST /task-checked":
-      //   try {
-      //     const writeResultMulti = [];
-      //     // Update task details
-      //     const updateResult = updateTaskDetails(userID, body.taskID, body.completedDate, body.expiryDate, body.GSI1SK, body.expiryDateTTL, body.link);
-      //     writeResultMulti.push(await update(updateResult));
-      //     // Wait for all operations to complete concurrently
-      //     const results = await Promise.all(writeResultMulti);
-      //     // Set the final result if needed
-      //     writeResult = results;
-      //   } catch (error) {
-      //     console.error("Error updating task checked:", error);
-      //     // Handle the error (e.g., return a meaningful error message or re-throw)
-      //     writeResult = { error: "Task update failed", details: error.message };
-      //   }
-      //   break;
-
-
-      //// UPDATE TASK IMPORTANCE ////
-      // case "POST /task-important":
-      //   writeResult = await update(updateTaskImportance(userID, body.taskID, body.isImportant));
-      //   break;
-
-
-      //// ADD TASK ////
-      // case "POST /new-task":
-      //   writeResult = await add(addTask(userID, body));
-      //   break;
-
-
-      //// DELETE TASK ////
-      // case "POST /delete-task":
-      //   writeResult = await remove(deleteTask(userID, body.taskID));
-      //   break;
 
 
       //// DELETE BOARD ////
@@ -270,60 +196,6 @@ function activeTasksQuery(boardID) {
   }
 }
 
-function expiredTasksQuery(boardID) {
-  return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
-    "IndexName": "GSI1",
-    "KeyConditionExpression": "#c1490 = :c1490 And #c1491 < :c1491",
-    "ProjectionExpression": "SK, Description, Category, ExpiryDate",
-    "ExpressionAttributeValues": {
-      ":c1490": { "S": boardID },
-      ":c1491": { "S": String(Date.now()) }
-    },
-    "ExpressionAttributeNames": {
-      "#c1490": "GSI1-PK",
-      "#c1491": "GSI1-SK"
-    }
-  }
-}
-
-function allTasksQuery(userID) {
-  return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Description, Category, ExpiryDate, CreatedDate, CompletedDate",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": "t#" }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
-}
-
-function taskQuery(userID, taskID) {
-  return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
-    "ProjectionExpression": "SK, Description, Category, ExpiryDate, CreatedDate, CompletedDate",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": taskID }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
-}
-
 function boardsPerUserQuery(userID) {
   return {
     "TableName": tableName,
@@ -361,69 +233,6 @@ function getUser(userID) {
   }
 }
 
-function updateTaskDescription(userID, taskID, description) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": description
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Description"
-    }
-  }
-}
-
-function updateTaskImportance(userID, taskID, isImportant) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": isImportant
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Important"
-    }
-  }
-}
-
-function updateTaskDetails(userID, taskID, completedDate, expiryDate, GSI1SK, expiryDateTTL, link) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52, #9eb53 = :9eb53, #9eb54 = :9eb54",
-    "ExpressionAttributeValues": {
-      ":9eb50": { "S": GSI1SK },
-      ":9eb51": { "S": completedDate },
-      ":9eb52": { "S": expiryDate },
-      ":9eb53": { "N": String(expiryDateTTL) },
-      ":9eb54": { "S": link },
-    },
-    "ExpressionAttributeNames": {
-      "#9eb50": "GSI1-SK",
-      "#9eb51": "CompletedDate",
-      "#9eb52": "ExpiryDate",
-      "#9eb53": "ExpiryDateTTL",
-      "#9eb54": "Link",
-    }
-  }
-}
-
 function addTask(userID, body) {
   return {
     "Item": {
@@ -441,16 +250,6 @@ function addTask(userID, body) {
       "Emoji": { "S": body.emoji },
     },
     "TableName": tableName
-  }
-}
-
-function deleteTask(userID, taskID) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": taskID }
-    }
   }
 }
 

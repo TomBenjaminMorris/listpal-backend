@@ -6,7 +6,6 @@ const tableName = "ListPal-" + process.env.Env;
 
 module.exports.handler = async (event) => {
   try {
-    // console.log("TTT event: ", JSON.stringify(event));
     let frequency = '';
     if (event.resources[0]) {
       if (event.resources[0].includes("weekly")) {
@@ -17,13 +16,11 @@ module.exports.handler = async (event) => {
         frequency = "YScore";
       }
     }
-    console.log("TTT frequency: ", frequency);
-    
+
     const allBoards = await query(allBoardsQuery());
     const data = allBoards && allBoards.Items.map((item) => {
       return unmarshall(item);
     });
-    console.log("TTT data: ", JSON.stringify(data));
 
     let result = []
     try {
@@ -31,9 +28,10 @@ module.exports.handler = async (event) => {
         const writeResult = await update(updateBoardScores(board.PK, board.SK, frequency));
         result.push(writeResult)
       }
-      console.log("TTT Successfully updated scores");
       return result
     } catch (e) {
+      // EventBridge ignores the return value, so without this a failed reset leaves no trace
+      console.error("Score reset failed:", e);
       return "Batch update failed: " + e;
     }
 

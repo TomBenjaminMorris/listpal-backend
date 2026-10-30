@@ -20,4 +20,4 @@ function periodsContaining(completedMs, nowMs) {
   return Object.keys(starts).filter(field => completedMs >= starts[field]);
 }
 
-module.exports = { periodStarts, periodsContaining };
+module.exports = { periodsContaining };

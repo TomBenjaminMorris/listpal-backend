@@ -1,19 +1,7 @@
 locals {
   lambda_routes = {
-    # all_tasks = {
-    #   route     = "GET /all-tasks"
-    #   protected = true
-    # },
     active_tasks = {
       route     = "GET /active-tasks"
-      protected = true
-    },
-    # expired_tasks = {
-    #   route     = "GET /expired-tasks"
-    #   protected = true
-    # },
-    task = {
-      route     = "GET /task"
       protected = true
     },
     boards = {
@@ -32,30 +20,6 @@ locals {
       route     = "POST /sync"
       protected = true
     },
-    # task_description = {
-    #   route     = "POST /task-description"
-    #   protected = true
-    # },
-    # task_details = {
-    #   route     = "POST /task-details"
-    #   protected = true
-    # },
-    # task_checked = {
-    #   route     = "POST /task-checked"
-    #   protected = true
-    # },
-    # task_important = {
-    #   route     = "POST /task-important"
-    #   protected = true
-    # },
-    # new_task = {
-    #   route     = "POST /new-task"
-    #   protected = true
-    # },
-    # delete_task = {
-    #   route     = "POST /delete-task"
-    #   protected = true
-    # },
     user_theme = {
       route     = "POST /user-theme"
       protected = true
