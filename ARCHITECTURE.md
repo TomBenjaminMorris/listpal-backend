@@ -144,16 +144,18 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /new-user` | none | Create user, demo board and welcome task |
 | `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `update` on board settings (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
-| `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits. The last three are being replaced by board ops in `POST /sync` |
+| `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits. The last three write only to an existing board (404 otherwise, 403 for an ID that isn't a board) and are being replaced by board ops in `POST /sync` |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
-| `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget`. Being replaced by board ops in `POST /sync` |
+| `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` (each a number of 1 or more, 400 otherwise). Writes only to an existing board, like the edits above. Being replaced by board ops in `POST /sync` |
 
 ### Board ownership check
 
 `verifyBoard` is one strongly consistent `GetItem` on `(userID, boardID)`, projecting only `SK`. The ID must start `b#` and be longer than the prefix, so the user item, a task or a GSI1 partition key can't pass as a board. The read is consistent because the frontend can open or delete a board moments after creating it.
 
-`POST /delete-board` and `POST /board-scores` run the check before writing anything. `GET /active-tasks` runs it at the same time as the task query, because ownership never changes and the tasks are discarded on a 403. The task query only starts for a well-formed board ID, so `"u#"` or `"b#"` (the GSI1 partitions holding every user and every board) are never read.
+`POST /delete-board` and `POST /board-scores` run the check before writing anything.
+
+`POST /rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` skip the read. Their key is built from the caller's `userID`, so they can only touch the caller's partition, and `isBoardID` stops them writing to the user item (403). Each write is conditioned on `attribute_exists(SK)`. An edit that lands after the board was deleted, from another tab or a request still in flight, returns 404 instead of recreating the board as a partial item with no scores or targets. `GET /active-tasks` runs it at the same time as the task query, because ownership never changes and the tasks are discarded on a 403. The task query only starts for a well-formed board ID, so `"u#"` or `"b#"` (the GSI1 partitions holding every user and every board) are never read.
 
 ```mermaid
 sequenceDiagram

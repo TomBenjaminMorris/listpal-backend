@@ -169,20 +169,20 @@ module.exports.handler = async (event) => {
 
       //// RENAME BOARD ////
       case "POST /rename-board":
-        writeResult = await update(renameBoard(userID, body.boardID, body.name));
-        break;
+        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
+        return await updateBoardSetting(renameBoard(userID, body.boardID, body.name));
 
 
       //// BOARD EMOJI ////
       case "POST /board-emoji":
-        writeResult = await update(updateBoardEmoji(userID, body.boardID, body.emoji));
-        break;
+        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
+        return await updateBoardSetting(updateBoardEmoji(userID, body.boardID, body.emoji));
 
 
       //// BOARD CATEGORY ORDER ////
       case "POST /board-category-order":
-        writeResult = await update(updateBoardCategoryOrder(userID, body.boardID, body.categoryOrder));
-        break;
+        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
+        return await updateBoardSetting(updateBoardCategoryOrder(userID, body.boardID, body.categoryOrder));
 
 
       //// DELETE BOARD ////
@@ -219,8 +219,12 @@ module.exports.handler = async (event) => {
 
       //// UPDATE BOARD TARGETS ////
       case "POST /board-targets":
-        writeResult = await update(updateBoardTargets(userID, body.boardID, body.targets));
-        break;
+        const targets = body?.targets;
+        if (!targets || !["YTarget", "MTarget", "WTarget"].every(field => Number.isFinite(Number(targets[field])) && Number(targets[field]) >= 1)) {
+          return respond(400, { error: "targets must contain YTarget, MTarget and WTarget of 1 or more" });
+        }
+        if (!isBoardID(body.boardID)) return respond(403, { error: NOT_A_BOARD });
+        return await updateBoardSetting(updateBoardTargets(userID, body.boardID, targets));
 
 
       default:
@@ -245,6 +249,19 @@ module.exports.handler = async (event) => {
 // The user item and tasks share the user's partition with their boards, so the prefix stops them passing as boards
 function isBoardID(boardID) {
   return typeof boardID === "string" && boardID.startsWith("b#") && boardID.length > 2;
+}
+
+const NOT_A_BOARD = "Requested board does not belong to the currently logged-in user";
+
+// Keys use the caller's userID, so ownership needs no read. The condition stops a write that lands after the board
+// is deleted, from another tab or a request still in flight, recreating it as a partial board with no scores.
+async function updateBoardSetting(input) {
+  try {
+    return { data: await update({ ...input, ConditionExpression: "attribute_exists(SK)" }) };
+  } catch (error) {
+    if (error.name === "ConditionalCheckFailedException") return respond(404, { error: "Board not found" });
+    throw error;
+  }
 }
 
 async function verifyBoard(userID, boardID) {
