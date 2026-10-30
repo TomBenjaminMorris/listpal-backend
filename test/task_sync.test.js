@@ -259,6 +259,123 @@ test("a delete is applied without touching scores", async () => {
   assert.equal(inputs(mock, TransactWriteItemsCommand).length, 0);
 });
 
+const boardOp = (fields, overrides = {}) => ({ opId: `${BOARD}:1`, SK: BOARD, boardID: BOARD, kind: "update", fields, ...overrides });
+
+test("a board update writes every allowed field in one conditional write", async () => {
+  const { client, mock } = setup();
+  const fields = { Board: "Home", Emoji: "🏡", CategoryOrder: JSON.stringify(["Garden", "Kitchen"]), WTarget: 5, MTarget: 20, YTarget: 200 };
+
+  const result = await sync(client, [boardOp(fields)]);
+
+  assert.deepEqual(result.results, [{ opId: `${BOARD}:1`, SK: BOARD, status: "applied" }]);
+  const [update] = inputs(mock, UpdateItemCommand);
+  assert.deepEqual(unmarshall(update.Key), { PK: USER, SK: BOARD });
+  assert.equal(update.ConditionExpression, "attribute_exists(SK)");
+  const written = Object.fromEntries(Object.entries(update.ExpressionAttributeNames)
+    .map(([alias, name]) => [name, unmarshall(update.ExpressionAttributeValues)[alias.replace("#", ":")]]));
+  assert.deepEqual(written, fields);
+  assert.equal(update.ExpressionAttributeValues[":f3"].N, "5");
+  assert.equal(inputs(mock, TransactWriteItemsCommand).length, 0);
+});
+
+test("board ops with bad fields, kinds or IDs are rejected without writing", async () => {
+  const { client, mock } = setup();
+  const bad = [
+    boardOp({ Board: "" }),
+    boardOp({ Board: 3 }),
+    boardOp({ Emoji: null }),
+    boardOp({ CategoryOrder: "not json" }),
+    boardOp({ CategoryOrder: "[1, 2]" }),
+    boardOp({ CategoryOrder: "{}" }),
+    boardOp({ CategoryOrder: ["Garden"] }),
+    boardOp({ WTarget: 0 }),
+    boardOp({ MTarget: 1.5 }),
+    boardOp({ YTarget: "365" }),
+    boardOp({ WScore: 99 }),
+    boardOp({ PK: "u#someone-else" }),
+    boardOp({ constructor: "x" }),
+    boardOp([]),
+    boardOp({ Board: "Home" }, { kind: "create" }),
+    boardOp({ Board: "Home" }, { kind: "delete" }),
+    boardOp({ Board: "Home" }, { boardID: "b#other" }),
+    boardOp({ Board: "Home" }, { SK: "b#", boardID: "b#" })
+  ];
+
+  const result = await sync(client, bad);
+
+  result.results.forEach(r => assert.equal(r.status, "rejected", JSON.stringify(r)));
+  assert.equal(inputs(mock, UpdateItemCommand).length, 0);
+});
+
+test("a board update for a deleted board reports gone and creates nothing", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [boardOp({ Emoji: "🗑️" }, { SK: "b#deleted", boardID: "b#deleted" })]);
+
+  assert.equal(result.results[0].status, "gone");
+  assert.equal(inputs(mock, UpdateItemCommand).length, 0);
+});
+
+test("a board deleted after the boards were read reports gone", async () => {
+  const { client, mock } = setup();
+  mock.on(UpdateItemCommand).rejects(conditionalCheckFailed());
+  const result = await sync(client, [boardOp({ Emoji: "🗑️" })]);
+
+  assert.equal(result.results[0].status, "gone");
+  assert.equal(inputs(mock, UpdateItemCommand)[0].ConditionExpression, "attribute_exists(SK)");
+});
+
+test("a board update with no fields is applied without writing", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [boardOp({})]);
+
+  assert.equal(result.results[0].status, "applied");
+  assert.equal(inputs(mock, UpdateItemCommand).length, 0);
+});
+
+test("board ops finish before task ops start, so a tick and a category order change on one board both apply", async () => {
+  const { client, mock } = setup({ task: { CompletedDate: "nil" } });
+  const events = [];
+  mock.on(UpdateItemCommand).callsFake(async input => {
+    const SK = unmarshall(input.Key).SK;
+    events.push(`start ${SK}`);
+    await delay(SK === BOARD ? 20 : 0);
+    events.push(`end ${SK}`);
+    return {};
+  });
+  mock.on(TransactWriteItemsCommand).callsFake(async () => {
+    events.push("start tick");
+    events.push("end tick");
+    return {};
+  });
+  const ops = [
+    op("update", { CompletedDate: THIS_WEEK }),
+    op("update", { Description: "Typing" }, { opId: "t#2:1", SK: "t#2" }),
+    boardOp({ CategoryOrder: JSON.stringify(["Garden"]) })
+  ];
+
+  const result = await sync(client, ops);
+
+  assert.deepEqual(result.results.map(r => [r.SK, r.status]), [["t#1", "applied"], ["t#2", "applied"], [BOARD, "applied"]]);
+  assert.deepEqual(events.slice(0, 2), [`start ${BOARD}`, `end ${BOARD}`]);
+  assert.ok(events.includes("start tick"));
+});
+
+test("repeated board ops apply in request order", async () => {
+  const { client, mock } = setup();
+  const events = [];
+  mock.on(UpdateItemCommand).callsFake(async input => {
+    const Board = unmarshall(input.ExpressionAttributeValues)[":f0"];
+    events.push(`start ${Board}`);
+    await delay(Board === "a" ? 20 : 0);
+    events.push(`end ${Board}`);
+    return {};
+  });
+
+  await sync(client, [boardOp({ Board: "a" }), boardOp({ Board: "b" }, { opId: `${BOARD}:2` })]);
+
+  assert.deepEqual(events, ["start a", "end a", "start b", "end b"]);
+});
+
 test("validateSyncBody rejects missing and oversized batches", () => {
   assert.throws(() => validateSyncBody({}), ValidationError);
   assert.throws(() => validateSyncBody({ ops: new Array(MAX_OPS + 1).fill(op("delete")) }), ValidationError);

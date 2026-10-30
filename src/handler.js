@@ -99,7 +99,7 @@ module.exports.handler = async (event) => {
         break;
 
 
-      //// SYNC TASK CHANGES ////
+      //// SYNC TASK AND BOARD SETTINGS CHANGES ////
       case "POST /sync":
         try {
           writeResult = await syncTasks(client, tableName, userID, validateSyncBody(body));
