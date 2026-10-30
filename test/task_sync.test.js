@@ -295,7 +295,6 @@ test("board ops with bad fields, kinds or IDs are rejected without writing", asy
     boardOp({ PK: "u#someone-else" }),
     boardOp({ constructor: "x" }),
     boardOp([]),
-    boardOp({ Board: "Home" }, { kind: "create" }),
     boardOp({ Board: "Home" }, { kind: "delete" }),
     boardOp({ Board: "Home" }, { boardID: "b#other" }),
     boardOp({ Board: "Home" }, { SK: "b#", boardID: "b#" })
@@ -374,6 +373,83 @@ test("repeated board ops apply in request order", async () => {
   await sync(client, [boardOp({ Board: "a" }), boardOp({ Board: "b" }, { opId: `${BOARD}:2` })]);
 
   assert.deepEqual(events, ["start a", "end a", "start b", "end b"]);
+});
+
+const NEW_BOARD = "b#new";
+const boardCreate = (fields = { Board: "Garden" }, overrides = {}) =>
+  ({ opId: `${NEW_BOARD}:1`, SK: NEW_BOARD, boardID: NEW_BOARD, kind: "create", fields, ...overrides });
+
+test("a board create writes a whole board with defaults, only if it doesn't exist", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [boardCreate({ Board: "Garden", Emoji: "🌱" })]);
+
+  assert.equal(result.results[0].status, "applied");
+  const [put] = inputs(mock, PutItemCommand);
+  assert.equal(put.ConditionExpression, "attribute_not_exists(SK)");
+  assert.deepEqual(unmarshall(put.Item), {
+    PK: USER, SK: NEW_BOARD, EntityType: "Board", "GSI1-PK": "b#", "GSI1-SK": NEW_BOARD,
+    Board: "Garden", Emoji: "🌱", CategoryOrder: "[]",
+    WScore: 0, MScore: 0, YScore: 0, WTarget: 7, MTarget: 31, YTarget: 365
+  });
+});
+
+test("a board create and tasks for it in one batch all apply, the board first", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [
+    op("create", { Description: "First task", CompletedDate: THIS_WEEK }, { boardID: NEW_BOARD }),
+    boardCreate()
+  ]);
+
+  assert.deepEqual(result.results.map(r => [r.SK, r.status]), [["t#1", "applied"], [NEW_BOARD, "applied"]]);
+  assert.equal(unmarshall(inputs(mock, PutItemCommand)[0].Item).SK, NEW_BOARD);
+  const [transaction] = inputs(mock, TransactWriteItemsCommand);
+  assert.equal(unmarshall(transaction.TransactItems[0].Put.Item)["GSI1-PK"], NEW_BOARD);
+  assert.deepEqual(unmarshall(scoreUpdate(transaction).Key), { PK: USER, SK: NEW_BOARD });
+});
+
+test("a resent board create applies its fields without resetting the scores", async () => {
+  const { client, mock } = setup();
+  mock.on(QueryCommand).resolves({ Items: [marshall({ SK: NEW_BOARD, WScore: 4, MScore: 4, YScore: 4 })] });
+  const result = await sync(client, [boardCreate({ Board: "Garden renamed" })]);
+
+  assert.equal(result.results[0].status, "applied");
+  assert.equal(inputs(mock, PutItemCommand).length, 0);
+  const [update] = inputs(mock, UpdateItemCommand);
+  assert.equal(update.ConditionExpression, "attribute_exists(SK)");
+  assert.deepEqual(Object.values(update.ExpressionAttributeNames), ["Board"]);
+});
+
+test("a board created by another request since the read is updated instead", async () => {
+  const { client, mock } = setup();
+  mock.on(QueryCommand)
+    .resolvesOnce({ Items: [] })
+    .resolves({ Items: [marshall({ SK: NEW_BOARD, WScore: 2, MScore: 2, YScore: 2 })] });
+  mock.on(PutItemCommand).rejects(conditionalCheckFailed());
+  const result = await sync(client, [boardCreate()]);
+
+  assert.equal(result.results[0].status, "applied");
+  assert.equal(inputs(mock, UpdateItemCommand).length, 1);
+});
+
+test("a board create needs a name and only allowed fields", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [
+    boardCreate({ Emoji: "🌱" }),
+    boardCreate({ Board: "" }),
+    boardCreate({ Board: "Garden", WScore: 99 }),
+    boardCreate({ Board: "Garden" }, { boardID: BOARD })
+  ]);
+
+  result.results.forEach(r => assert.equal(r.status, "rejected", JSON.stringify(r)));
+  assert.equal(inputs(mock, PutItemCommand).length, 0);
+});
+
+test("tasks for a board that is neither stored nor created in the batch are still rejected", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [op("create", {}, { boardID: "b#elsewhere" })]);
+
+  assert.deepEqual(result.results.map(r => [r.status, r.reason]), [["rejected", "unknown board"]]);
+  assert.equal(inputs(mock, PutItemCommand).length, 0);
 });
 
 test("validateSyncBody rejects missing and oversized batches", () => {

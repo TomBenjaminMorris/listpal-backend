@@ -142,7 +142,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
 | `POST /new-user` | none | Create user, demo board and welcome task |
-| `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `update` on board settings (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
+| `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `create`, `update` on boards (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits. The last three are being replaced by board ops in `POST /sync` |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
@@ -224,8 +224,13 @@ sequenceDiagram
     F->>A: POST /sync {ops}
     A->>D: Query boards (consistent read)
     loop each board op, in request order
-        A->>D: UpdateItem on the board, if attribute_exists(SK)
+        alt create
+            A->>D: PutItem the board, if attribute_not_exists(SK)
+        else update
+            A->>D: UpdateItem on the board, if attribute_exists(SK)
+        end
     end
+    Note over A: then check task ops against the boards, including any just created
     par then up to 10 at a time (ops without CompletedDate, one op per task)
         A->>D: Put, conditional Update or Delete on the task
     end
@@ -271,7 +276,7 @@ Behaviour that matters when changing this code:
 
 #### Board ops
 
-An op whose `SK` starts `b#` updates that board's settings. It must have `kind: "update"` and a `boardID` equal to its `SK`. Allowed fields:
+An op whose `SK` starts `b#` creates a board or updates its settings. It must have `kind: "create"` or `kind: "update"`, and a `boardID` equal to its `SK`. A create must include `Board`. Allowed fields:
 
 | Field | Rule |
 | --- | --- |
@@ -285,6 +290,9 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - The write is one `UpdateItem` keyed on the caller's `userID` and conditioned on `attribute_exists(SK)`. A board missing from the initial read, or deleted since, returns `gone`, so an edit that arrives after a delete can't bring the board back as a partial item.
 - Board ops run before every task op, one at a time in request order. A plain write to a board item while a tick's `TransactWriteItems` is updating it would cancel the transaction, so the two never overlap within a batch.
 - A board op with no fields is `applied` without a write.
+- A create writes the whole board item with the same defaults as `POST /new-board` (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
+- Task ops are checked only after the board ops have run, and a created board is added to the boards for that check. So a batch holding a new board and its first tasks applies them all, where tasks for a board the server doesn't have are otherwise rejected as `unknown board`.
+- A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
 
 ## 5. Data model
 
