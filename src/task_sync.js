@@ -112,12 +112,23 @@ async function syncTasks(client, tableName, userID, ops, now = Date.now()) {
   // finish before task ops start. They are rare and may repeat a board, so they run one at a time in order.
   for (const entry of accepted(boardOps)) await run(entry);
 
+  // A create that hit a transient error will be resent, so its board's tasks must wait for it rather than be
+  // rejected as "unknown board", which the client would drop
+  const unmadeBoards = new Set(boardOps
+    .filter(([op, i]) => op.kind === "create" && results[i].status === "retry")
+    .map(([op]) => op.SK));
+  const waiting = taskOps.filter(([op, i]) => {
+    if (!unmadeBoards.has(op?.boardID)) return true;
+    results[i] = { opId: op.opId, SK: op.SK, status: "retry" };
+    return false;
+  });
+
   // Checked after the board ops, so tasks for a board created in this batch pass the ownership check.
   // Ops that can move scores share the board item, where parallel transactions would cancel each other, and
   // repeated tasks must apply in order, so those stay sequential. The rest touch only their own task and never ctx.
   const concurrent = [];
   const sequential = [];
-  accepted(taskOps).forEach(([op, i]) => {
+  accepted(waiting).forEach(([op, i]) => {
     const touchesScores = "CompletedDate" in (op.fields ?? {});
     (touchesScores || perTask.get(op.SK) > 1 ? sequential : concurrent).push([op, i]);
   });

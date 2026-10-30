@@ -444,6 +444,16 @@ test("a board create needs a name and only allowed fields", async () => {
   assert.equal(inputs(mock, PutItemCommand).length, 0);
 });
 
+test("tasks wait for a board create that hit a transient error, rather than being rejected", async t => {
+  const { client, mock } = setup();
+  mock.on(PutItemCommand, { Item: { SK: { S: NEW_BOARD } } }).rejects(Object.assign(new Error("Throughput exceeded"), { name: "ProvisionedThroughputExceededException" }));
+  t.mock.method(console, "error", () => {});
+  const result = await sync(client, [boardCreate(), op("create", { Description: "First" }, { boardID: NEW_BOARD })]);
+
+  assert.deepEqual(result.results.map(r => r.status), ["retry", "retry"]);
+  assert.equal(inputs(mock, PutItemCommand).length, 1);
+});
+
 test("tasks for a board that is neither stored nor created in the batch are still rejected", async () => {
   const { client, mock } = setup();
   const result = await sync(client, [op("create", {}, { boardID: "b#elsewhere" })]);

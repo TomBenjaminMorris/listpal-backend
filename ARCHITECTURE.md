@@ -292,6 +292,7 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - A board op with no fields is `applied` without a write.
 - A create writes the whole board item with the same defaults as `POST /new-board` (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
 - Task ops are checked only after the board ops have run, and a created board is added to the boards for that check. So a batch holding a new board and its first tasks applies them all, where tasks for a board the server doesn't have are otherwise rejected as `unknown board`.
+- If a create hits a transient error (`retry`), the batch's task ops for that board also return `retry` instead of `unknown board`, so the client keeps them and resends them with the create.
 - A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
 
 ## 5. Data model
