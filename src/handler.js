@@ -161,30 +161,6 @@ module.exports.handler = async (event) => {
       //   break;
 
 
-      //// ADD BOARD ////
-      case "POST /new-board":
-        writeResult = await add(addBoard(userID, body));
-        break;
-
-
-      //// RENAME BOARD ////
-      case "POST /rename-board":
-        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
-        return await updateBoardSetting(renameBoard(userID, body.boardID, body.name));
-
-
-      //// BOARD EMOJI ////
-      case "POST /board-emoji":
-        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
-        return await updateBoardSetting(updateBoardEmoji(userID, body.boardID, body.emoji));
-
-
-      //// BOARD CATEGORY ORDER ////
-      case "POST /board-category-order":
-        if (!isBoardID(body?.boardID)) return respond(403, { error: NOT_A_BOARD });
-        return await updateBoardSetting(updateBoardCategoryOrder(userID, body.boardID, body.categoryOrder));
-
-
       //// DELETE BOARD ////
       case "POST /delete-board":
         valid = await verifyBoard(userID, body.boardID);
@@ -217,16 +193,6 @@ module.exports.handler = async (event) => {
         break;
 
 
-      //// UPDATE BOARD TARGETS ////
-      case "POST /board-targets":
-        const targets = body?.targets;
-        if (!targets || !["YTarget", "MTarget", "WTarget"].every(field => Number.isFinite(Number(targets[field])) && Number(targets[field]) >= 1)) {
-          return respond(400, { error: "targets must contain YTarget, MTarget and WTarget of 1 or more" });
-        }
-        if (!isBoardID(body.boardID)) return respond(403, { error: NOT_A_BOARD });
-        return await updateBoardSetting(updateBoardTargets(userID, body.boardID, targets));
-
-
       default:
         throw new Error(`Unsupported route: "${event.routeKey}"`);
     }
@@ -249,19 +215,6 @@ module.exports.handler = async (event) => {
 // The user item and tasks share the user's partition with their boards, so the prefix stops them passing as boards
 function isBoardID(boardID) {
   return typeof boardID === "string" && boardID.startsWith("b#") && boardID.length > 2;
-}
-
-const NOT_A_BOARD = "Requested board does not belong to the currently logged-in user";
-
-// Keys use the caller's userID, so ownership needs no read. The condition stops a write that lands after the board
-// is deleted, from another tab or a request still in flight, recreating it as a partial board with no scores.
-async function updateBoardSetting(input) {
-  try {
-    return { data: await update({ ...input, ConditionExpression: "attribute_exists(SK)" }) };
-  } catch (error) {
-    if (error.name === "ConditionalCheckFailedException") return respond(404, { error: "Board not found" });
-    throw error;
-  }
 }
 
 async function verifyBoard(userID, boardID) {
@@ -540,63 +493,6 @@ function addBoard(userID, body) {
   }
 }
 
-function renameBoard(userID, boardID, name) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": name
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Board"
-    }
-  }
-}
-
-function updateBoardEmoji(userID, boardID, emoji) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": emoji
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "Emoji"
-    }
-  }
-}
-
-function updateBoardCategoryOrder(userID, boardID, categoryOrder) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #6e6a0 = :6e6a0",
-    "ExpressionAttributeValues": {
-      ":6e6a0": {
-        "S": categoryOrder
-      }
-    },
-    "ExpressionAttributeNames": {
-      "#6e6a0": "CategoryOrder"
-    }
-  }
-}
-
 function deleteBoard(userID, boardID) {
   return {
     "TableName": tableName,
@@ -658,27 +554,6 @@ function updateBoardScores(userID, boardID, scores) {
       "#9eb50": "YScore",
       "#9eb51": "MScore",
       "#9eb52": "WScore"
-    }
-  }
-}
-
-function updateBoardTargets(userID, boardID, targets) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb50": { "N": String(targets.YTarget) },
-      ":9eb51": { "N": String(targets.MTarget) },
-      ":9eb52": { "N": String(targets.WTarget) }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb50": "YTarget",
-      "#9eb51": "MTarget",
-      "#9eb52": "WTarget"
     }
   }
 }

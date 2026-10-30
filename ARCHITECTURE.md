@@ -144,10 +144,8 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /new-user` | none | Create user, demo board and welcome task |
 | `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `create`, `update` on boards (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
-| `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` | JWT | Board edits. The last three write only to an existing board (404 otherwise, 403 for an ID that isn't a board) and are being replaced by board ops in `POST /sync` |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
-| `POST /board-targets` | JWT | Save `YTarget`, `MTarget`, `WTarget` (each a number of 1 or more, 400 otherwise). Writes only to an existing board, like the edits above. Being replaced by board ops in `POST /sync` |
 
 ### Board ownership check
 
@@ -155,7 +153,6 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 
 `POST /delete-board` and `POST /board-scores` run the check before writing anything.
 
-`POST /rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` skip the read. Their key is built from the caller's `userID`, so they can only touch the caller's partition, and `isBoardID` stops them writing to the user item (403). Each write is conditioned on `attribute_exists(SK)`. An edit that lands after the board was deleted, from another tab or a request still in flight, returns 404 instead of recreating the board as a partial item with no scores or targets. `GET /active-tasks` runs it at the same time as the task query, because ownership never changes and the tasks are discarded on a 403. The task query only starts for a well-formed board ID, so `"u#"` or `"b#"` (the GSI1 partitions holding every user and every board) are never read.
 
 ```mermaid
 sequenceDiagram
@@ -209,7 +206,7 @@ sequenceDiagram
     end
 ```
 
-Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. Their code remains in `handler.js` as comments or unused functions.
+Commented-out routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` were removed outright once the frontend sent board creates and settings through `sync` instead. Their code remains in `handler.js` as comments or unused functions.
 
 Gateway settings: HTTP API, CORS open to all origins with preflights cacheable for 2 hours (`max_age = 7200`, so browsers skip the `OPTIONS` round trip on repeat requests), default throttling of 50 requests per second with a burst of 100, access logs to CloudWatch with one day retention.
 
@@ -292,7 +289,7 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - The write is one `UpdateItem` keyed on the caller's `userID` and conditioned on `attribute_exists(SK)`. A board missing from the initial read, or deleted since, returns `gone`, so an edit that arrives after a delete can't bring the board back as a partial item.
 - Board ops run before every task op, one at a time in request order. A plain write to a board item while a tick's `TransactWriteItems` is updating it would cancel the transaction, so the two never overlap within a batch.
 - A board op with no fields is `applied` without a write.
-- A create writes the whole board item with the same defaults as `POST /new-board` (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
+- A create writes the whole board item with the same defaults as the demo board `POST /new-user` makes (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
 - Task ops are checked only after the board ops have run, and a created board is added to the boards for that check. So a batch holding a new board and its first tasks applies them all, where tasks for a board the server doesn't have are otherwise rejected as `unknown board`.
 - If a create hits a transient error (`retry`), the batch's task ops for that board also return `retry` instead of `unknown board`, so the client keeps them and resends them with the create.
 - A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
