@@ -21,6 +21,11 @@ resource "aws_cognito_user_pool" "this" {
     case_sensitive = false
   }
 
+  # Otherwise Cognito applies a new email at once, and a typo locks the user out with no way to reset their password
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
   lambda_config {
     post_confirmation = module.sign_up_lambda_function.lambda_function_arn
   }
@@ -41,7 +46,8 @@ resource "aws_cognito_user_pool_client" "userpool_client" {
   supported_identity_providers         = ["COGNITO"]
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid"]
+  # The admin scope lets the access token call Cognito's self-service operations, such as ChangePassword, from Settings
+  allowed_oauth_scopes = ["openid", "aws.cognito.signin.user.admin"]
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_PASSWORD_AUTH",
@@ -65,6 +71,11 @@ resource "aws_cognito_user" "Admin" {
     given_name     = "Admin"
     family_name    = "User"
   }
+
+  # Details edited in Settings would otherwise be reverted by the next apply
+  lifecycle {
+    ignore_changes = [attributes]
+  }
 }
 
 resource "aws_cognito_user" "Tom" {
@@ -77,6 +88,11 @@ resource "aws_cognito_user" "Tom" {
     given_name     = "Tom"
     family_name    = "Morris"
   }
+
+  # Details edited in Settings would otherwise be reverted by the next apply
+  lifecycle {
+    ignore_changes = [attributes]
+  }
 }
 
 resource "aws_cognito_user" "Adam" {
@@ -88,5 +104,10 @@ resource "aws_cognito_user" "Adam" {
     email_verified = true
     given_name     = "Adam"
     family_name    = "Cooper"
+  }
+
+  # Details edited in Settings would otherwise be reverted by the next apply
+  lifecycle {
+    ignore_changes = [attributes]
   }
 }

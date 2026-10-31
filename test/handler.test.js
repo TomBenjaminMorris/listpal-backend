@@ -2,10 +2,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { mockClient } = require("aws-sdk-client-mock");
-const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand, BatchWriteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { CognitoIdentityProviderClient, AdminDeleteUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const { marshall } = require("@aws-sdk/util-dynamodb");
 
 const mock = mockClient(DynamoDBClient);
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
 const { handler } = require("../src/handler");
 
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -19,6 +21,7 @@ const request = (routeKey, { body, params } = {}) => handler({
 
 test.beforeEach(() => {
   mock.reset();
+  cognitoMock.reset();
   mock.on(QueryCommand).resolves({ Items: [marshall({ SK: "b#mine" })] });
   mock.on(GetItemCommand).resolves({});
   mock.on(GetItemCommand, { Key: { PK: { S: "u#user" }, SK: { S: "b#mine" } } }).resolves({ Item: marshall({ SK: "b#mine" }) });
@@ -131,9 +134,65 @@ test("deleting a board fails and keeps the board when tasks stay unprocessed", a
   const response = await request("POST /delete-board", { body: { boardID: "b#mine" } });
 
   assert.equal(response.statusCode, 500);
-  assert.match(response.body, /3 tasks could not be deleted/);
+  assert.match(response.body, /3 items could not be deleted/);
   assert.deepEqual(batchSizes(), [3, 3, 3, 3, 3]);
   assert.equal(mock.commandCalls(DeleteItemCommand).length, 0);
+});
+
+test("POST /delete-account deletes every item in the user's partition, then the login", async () => {
+  process.env.UserPoolId = "pool";
+  mock.on(QueryCommand)
+    .resolvesOnce({ Items: taskKeys(1, 30), LastEvaluatedKey: { SK: { S: "t#30" } } })
+    .resolves({ Items: [marshall({ SK: "u#user" }), marshall({ SK: "b#mine" })] });
+  mock.on(BatchWriteItemCommand).callsFake(() => {
+    assert.equal(cognitoMock.commandCalls(AdminDeleteUserCommand).length, 0);
+    return {};
+  });
+
+  const response = await request("POST /delete-account");
+
+  assert.deepEqual(response, { data: { deleted: true } });
+  const queries = mock.commandCalls(QueryCommand);
+  assert.equal(queries.length, 2);
+  assert.deepEqual(queries[0].args[0].input.ExpressionAttributeValues, { ":pk": { S: "u#user" } });
+  assert.equal(queries[0].args[0].input.IndexName, undefined);
+  assert.equal(queries[0].args[0].input.ConsistentRead, true);
+  assert.deepEqual(queries[1].args[0].input.ExclusiveStartKey, { SK: { S: "t#30" } });
+  assert.deepEqual(batchSizes(), [25, 5, 2]);
+  const deleted = mock.commandCalls(BatchWriteItemCommand).flatMap(call => Object.values(call.args[0].input.RequestItems)[0]);
+  assert.ok(deleted.every(r => r.DeleteRequest.Key.PK.S === "u#user"));
+  assert.deepEqual(cognitoMock.commandCalls(AdminDeleteUserCommand)[0].args[0].input, { UserPoolId: "pool", Username: "user" });
+});
+
+test("POST /delete-account keeps the login when items stay unprocessed, so the user can retry", async t => {
+  mock.on(QueryCommand).resolves({ Items: taskKeys(1, 2) });
+  mock.on(BatchWriteItemCommand).callsFake(input => ({ UnprocessedItems: input.RequestItems }));
+  t.mock.method(console, "error", () => {});
+
+  const response = await request("POST /delete-account");
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(cognitoMock.commandCalls(AdminDeleteUserCommand).length, 0);
+});
+
+test("POST /delete-account succeeds when an earlier attempt already deleted the login", async () => {
+  mock.on(QueryCommand).resolves({ Items: [] });
+  cognitoMock.on(AdminDeleteUserCommand).rejects(Object.assign(new Error("gone"), { name: "UserNotFoundException" }));
+
+  const response = await request("POST /delete-account");
+
+  assert.deepEqual(response, { data: { deleted: true } });
+});
+
+test("POST /new-user stores no email or name", async () => {
+  mock.on(PutItemCommand).resolves({});
+
+  await handler({ routeKey: "POST /new-user", headers: {}, body: JSON.stringify({ userID: "u#new" }) });
+
+  const user = mock.commandCalls(PutItemCommand)[0].args[0].input.Item;
+  assert.equal(user.SK.S, "u#new");
+  assert.equal(user.Email, undefined);
+  assert.equal(user.Name, undefined);
 });
 
 test("POST /board-scores for another user's board is a 403 with nothing written", async () => {
