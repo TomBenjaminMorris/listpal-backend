@@ -35,6 +35,11 @@ module "lambda_function" {
                     "dynamodb:BatchWriteItem"
                 ],
                 "Resource": "*"
+            },
+            {
+                "Effect": "Allow",
+                "Action": "cognito-idp:AdminDeleteUser",
+                "Resource": "${aws_cognito_user_pool.this.arn}"
             }
         ]
     }
@@ -47,7 +52,8 @@ module "lambda_function" {
   memory_size = 1024
 
   environment_variables = {
-    Env = var.env
+    Env        = var.env
+    UserPoolId = aws_cognito_user_pool.this.id
   }
 
   allowed_triggers = {

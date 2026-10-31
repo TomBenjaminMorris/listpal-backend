@@ -104,6 +104,15 @@ module.exports.handler = async (event) => {
         }
 
 
+      //// DELETE ACCOUNT ////
+      // Data before login: a failure partway leaves the login in place, so the user can sign in and try again.
+      case "POST /delete-account":
+        await deleteUserItems(userID);
+        await deleteCognitoUser(userID.slice(2));
+        writeResult = { deleted: true };
+        break;
+
+
       //// UPDATE BOARD SCORES ////
       // Manual score edits only. Ticking a task changes scores inside POST /sync.
       case "POST /board-scores":
@@ -304,24 +313,51 @@ function deleteBoard(userID, boardID) {
 
 // Every task on the board, expired ones included, a page at a time; batches of 25 are BatchWriteItem's limit.
 // Keys use the caller's userID, so nothing outside their partition can be deleted.
-async function deleteBoardTasks(userID, boardID) {
+function deleteBoardTasks(userID, boardID) {
+  return deleteQueried(userID, {
+    TableName: tableName,
+    IndexName: "GSI1",
+    KeyConditionExpression: "#pk = :pk",
+    ProjectionExpression: "SK",
+    ExpressionAttributeNames: { "#pk": "GSI1-PK" },
+    ExpressionAttributeValues: { ":pk": { S: boardID } }
+  });
+}
+
+// The user item, boards and tasks all share the user's partition
+function deleteUserItems(userID) {
+  return deleteQueried(userID, {
+    TableName: tableName,
+    KeyConditionExpression: "#pk = :pk",
+    ProjectionExpression: "SK",
+    ExpressionAttributeNames: { "#pk": "PK" },
+    ExpressionAttributeValues: { ":pk": { S: userID } },
+    // A task synced just before the delete must not be left behind
+    ConsistentRead: true
+  });
+}
+
+async function deleteQueried(userID, input) {
   let ExclusiveStartKey;
   do {
-    const page = await query({
-      TableName: tableName,
-      IndexName: "GSI1",
-      KeyConditionExpression: "#pk = :pk",
-      ProjectionExpression: "SK",
-      ExpressionAttributeNames: { "#pk": "GSI1-PK" },
-      ExpressionAttributeValues: { ":pk": { S: boardID } },
-      ExclusiveStartKey
-    });
+    const page = await query({ ...input, ExclusiveStartKey });
     const keys = (page.Items ?? []).map(item => ({ PK: { S: userID }, SK: item.SK }));
     for (let i = 0; i < keys.length; i += 25) {
       await batchDelete(keys.slice(i, i + 25));
     }
     ExclusiveStartKey = page.LastEvaluatedKey;
   } while (ExclusiveStartKey);
+}
+
+async function deleteCognitoUser(sub) {
+  // Only this rarely used route needs the Cognito client, so other routes' cold starts don't pay to load it
+  const { CognitoIdentityProviderClient, AdminDeleteUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
+  try {
+    await new CognitoIdentityProviderClient().send(new AdminDeleteUserCommand({ UserPoolId: process.env.UserPoolId, Username: sub }));
+  } catch (error) {
+    // An earlier attempt may have deleted the login and lost its response
+    if (error.name !== "UserNotFoundException") throw error;
+  }
 }
 
 // DynamoDB may hand back part of a batch when throttled; resend just those with a short backoff
@@ -332,7 +368,7 @@ async function batchDelete(keys) {
     const result = await client.send(new BatchWriteItemCommand({ RequestItems: { [tableName]: requests } }));
     requests = result.UnprocessedItems?.[tableName] ?? [];
   }
-  if (requests.length) throw new Error(`${requests.length} tasks could not be deleted`);
+  if (requests.length) throw new Error(`${requests.length} items could not be deleted`);
 }
 
 
@@ -362,8 +398,6 @@ function addUser(body) {
     "Item": {
       "SK": { "S": body.userID },
       "PK": { "S": body.userID },
-      "Email": { "S": body.email },
-      "Name": { "S": body.name },
       "EntityType": { "S": "User" },
       "GSI1-SK": { "S": body.userID },
       "GSI1-PK": { "S": "u#" },

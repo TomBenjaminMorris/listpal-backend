@@ -46,13 +46,13 @@ listpal-backend/
 │   ├── lambda.tf              API Lambda and the zip build
 │   ├── signup.tf              Sign-up Lambda and Cognito invoke permission
 │   ├── cronjob.tf             Score reset rules and Lambda
-│   ├── cognito.tf             User pool, domain, client, seed users
+│   ├── cognito.tf             User pool (emails verified before they change), domain, client, seed users (attributes ignored after creation)
 │   ├── acm.tf / route53.tf    Certificate (us-east-1) and DNS for the login domain
 │   ├── dynamodb.tf            Main table
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
 ├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock)
-├── test-data/                 Manual DynamoDB export and import scripts, plus export files
+├── test-data/                 Manual DynamoDB export and import scripts, a one-off to strip old Email and Name attributes, plus export files
 └── bak/                       Old code kept for reference (gitignored, ignore it)
 ```
 
@@ -121,7 +121,7 @@ sequenceDiagram
 
     U->>C: Sign up and confirm email
     C->>S: Post-confirmation trigger
-    S->>G: POST https://api.vinsp.in/new-user {userID, email, name: ""}
+    S->>G: POST https://api.vinsp.in/new-user {userID}
     G->>A: routeKey POST /new-user (no auth)
     A->>D: Put User item (theme purple-haze)
     A->>D: Put "Demo Board" (SK b#userID)
@@ -144,6 +144,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /new-user` | none | Create user, demo board and welcome task |
 | `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `create`, `update` on boards (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
+| `POST /delete-account` | JWT | Deletes every item in the user's partition, then their Cognito user. See "Account deletion" below |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 
@@ -179,7 +180,7 @@ sequenceDiagram
 
 `POST /delete-board` checks ownership first, then reads the board's tasks from `GSI1` with no sort key condition, so ticked tasks past their expiry are deleted too rather than waiting for the TTL. The query projects only `SK` and follows `LastEvaluatedKey`, so boards beyond one 1 MB page are fully deleted. Each page is deleted with `BatchWriteItem`, 25 keys at a time (its limit), one batch after another. Keys are built from the caller's `userID`, so nothing outside their partition can be deleted.
 
-DynamoDB can return part of a batch as `UnprocessedItems` when throttled. Those are resent after 100, 200, 400 and 800 ms, five attempts in all. If any remain, the request fails with a 500 that names how many tasks were left. The board item is deleted only after all its tasks, so a failure partway leaves the board in place and the user can delete it again. Task text is not logged.
+DynamoDB can return part of a batch as `UnprocessedItems` when throttled. Those are resent after 100, 200, 400 and 800 ms, five attempts in all. If any remain, the request fails with a 500 that names how many were left. The board item is deleted only after all its tasks, so a failure partway leaves the board in place and the user can delete it again. Task text is not logged.
 
 ```mermaid
 sequenceDiagram
@@ -203,6 +204,32 @@ sequenceDiagram
         end
         A->>D: DeleteItem the board
         A-->>F: 200
+    end
+```
+
+### Account deletion
+
+`POST /delete-account` queries the caller's whole partition with a strongly consistent read, so a task synced just before the delete isn't missed, and deletes it in the same batches as board deletion. It then calls `AdminDeleteUser`. The order matters: a failure partway leaves the login in place, so the user can sign in and try again. A retry is safe, because the query finds only what is left and a login that has already gone counts as success. Very large accounts could hit the 15 s Lambda timeout, and a retry continues from where that attempt stopped.
+
+The Cognito client is required inside the function so other routes' cold starts don't pay to load it. Like the DynamoDB client, it comes from the Lambda runtime rather than the zip.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant A as API Lambda
+    participant D as DynamoDB
+    participant C as Cognito
+
+    F->>A: POST /delete-account
+    loop Each page of the user's partition
+        A->>D: Query PK = userID (consistent, SK only)
+        A->>D: BatchWriteItem 25 deletes
+    end
+    alt Items left unprocessed
+        A-->>F: 500, login kept
+    else All deleted
+        A->>C: AdminDeleteUser (UserNotFound counts as success)
+        A-->>F: data: deleted
     end
 ```
 
@@ -302,7 +329,7 @@ DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S
 
 | Entity | PK | SK | GSI1-PK | GSI1-SK | Key attributes |
 | --- | --- | --- | --- | --- | --- |
-| User | `u#<cognito sub>` | `u#<sub>` | `u#` | `u#<sub>` | `Email`, `Name`, `Theme` |
+| User | `u#<cognito sub>` | `u#<sub>` | `u#` | `u#<sub>` | `Theme`. Email and name live only in Cognito |
 | Board | `u#<sub>` | `b#<uuid>` | `b#` | `b#<uuid>` | `Board`, `Emoji`, `CategoryOrder` (JSON string), `WScore/MScore/YScore`, `WTarget/MTarget/YTarget` (defaults 7, 31, 365) |
 | Task | `u#<sub>` | `t#<uuid>` | `b#<boardUuid>` | expiry as epoch ms string, or `"nil"` | `Description`, `Category`, `Emoji`, `CreatedDate`, `CompletedDate`, `ExpiryDate`, `ExpiryDateTTL`, `Important`, `Link` |
 
@@ -377,6 +404,7 @@ Key points:
   - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem`, `BatchWriteItem` (board deletion) plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
   - Sign-up: no extra policy (it only calls the public API).
+  - API: also `cognito-idp:AdminDeleteUser`, scoped to this user pool, for `POST /delete-account`.
 - **Logging:** Lambda and API access log groups keep logs for one day only.
 
 ## 8. Deployment
@@ -491,7 +519,7 @@ Recommended improvements, if wanted: enable `point_in_time_recovery_enabled = tr
 These are things a reader should know before changing the system. They are not fixed in the code.
 
 - `cognito.tf` creates users with hard-coded passwords in the repository. Remove or randomise these for anything beyond throwaway development.
-- `POST /new-user` is unauthenticated and trusts the `userID`, `email` and `name` in the body. Anyone can create user, board and task records for an arbitrary ID. Securing it (for example with an IAM-authorised direct Lambda invoke from the Cognito trigger rather than a public HTTP call) would be better.
+- `POST /new-user` is unauthenticated and trusts the `userID` in the body. Anyone can create user, board and task records for an arbitrary ID. Securing it (for example with an IAM-authorised direct Lambda invoke from the Cognito trigger rather than a public HTTP call) would be better.
 - IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
