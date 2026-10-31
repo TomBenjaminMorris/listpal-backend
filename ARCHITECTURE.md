@@ -27,6 +27,7 @@ listpal-backend/
 ├── README.md                  Only a list of useful links
 ├── ARCHITECTURE.md            This file
 ├── CLAUDE.md                  Working rules for AI assistants, including the documentation rules
+├── .claude/skills/            AI assistant skills: pr (raise a PR), merge (raise and merge one)
 ├── src/                       All Lambda code (one shared package, one zip)
 │   ├── handler.js             API Lambda: every HTTP route
 │   ├── task_sync.js           Batch task and board settings sync (POST /sync), including score changes
@@ -381,6 +382,8 @@ Key points:
 ## 8. Deployment
 
 There is no pipeline. Deployment is `terraform apply` from a machine with AWS credentials for the target account.
+
+Getting a change onto `main` comes first and has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it. Neither one deploys anything.
 
 ```mermaid
 flowchart LR
