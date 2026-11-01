@@ -33,7 +33,7 @@ listpal-backend/
 │   ├── task_sync.js           Batch task and board settings sync (POST /sync), including score changes
 │   ├── score_periods.js       Which score periods (W, M, Y) a completion counts towards
 │   ├── score_reset.js         Cron Lambda: zeroes board scores
-│   ├── sign_up.js             Cognito post-confirmation trigger
+│   ├── welcome_board.js       The example board and tasks a new user starts with
 │   ├── package.json / yarn.lock
 │   └── .tool-versions         nodejs 20.0.0
 ├── src.zip                    Build artefact written by Terraform (gitignored)
@@ -44,9 +44,8 @@ listpal-backend/
 │   ├── locals.tf              Route table (lambda_routes) and common tags
 │   ├── apigateway.tf          HTTP API, JWT authoriser, throttling, logs
 │   ├── lambda.tf              API Lambda and the zip build
-│   ├── signup.tf              Sign-up Lambda and Cognito invoke permission
 │   ├── cronjob.tf             Score reset rules and Lambda
-│   ├── cognito.tf             User pool (emails verified before they change), domain, client, seed users (attributes ignored after creation)
+│   ├── cognito.tf             User pool (emails verified before they change), domain, client
 │   ├── acm.tf / route53.tf    Certificate (us-east-1) and DNS for the login domain
 │   ├── dynamodb.tf            Main table
 │   ├── outputs.tf             api_endpoint
@@ -77,8 +76,7 @@ flowchart LR
 
     subgraph Compute["Lambda (nodejs20.x, one zip)"]
         L1["listpal_dev<br/>handler.handler<br/>1024 MB, 15 s timeout"]
-        L2["listpal_sign_up_dev<br/>sign_up.handler"]
-        L3["listpal_score_reset_dev<br/>score_reset.handler"]
+        L2["listpal_score_reset_dev<br/>score_reset.handler"]
     end
 
     subgraph Data["DynamoDB (eu-west-2)"]
@@ -93,17 +91,15 @@ flowchart LR
     APIGW -->|"validates JWT against pool"| UP
     APIGW -->|"routeKey"| L1
     L1 --> T1
-    UP -->|"post-confirmation"| L2
-    L2 -->|"POST /new-user (unauthenticated)"| APIGW
-    EB -->|"weekly, monthly, yearly"| L3
-    L3 --> T1
+    EB -->|"weekly, monthly, yearly"| L2
+    L2 --> T1
 ```
 
 ### Request lifecycle
 
 1. The frontend signs the user in through the Cognito managed login (authorisation code flow, scope `openid`).
 2. Requests carry the token in the `Authorization` header.
-3. API Gateway's JWT authoriser checks the token against the user pool and client ID. `POST /new-user` is the only route with no authoriser.
+3. API Gateway's JWT authoriser checks the token against the user pool and client ID. Every route has this authoriser.
 4. API Gateway invokes the single API Lambda with payload format 2.0. The Lambda switches on `event.routeKey`.
 5. For protected routes the Lambda runs `jwtDecode` on the same header (decode only, no signature check, because the gateway has already verified it) and builds `userID = "u#" + sub`. All data access is scoped by this ID.
 6. The Lambda returns `{ data: ... }` on success, which API Gateway sends as a 200. Errors go through a `respond(statusCode, payload)` helper: validation failures are 400, ownership failures 403, and anything caught by the top-level `catch` is 500.
@@ -114,23 +110,29 @@ flowchart LR
 sequenceDiagram
     participant U as User
     participant C as Cognito
-    participant S as sign_up Lambda
+    participant F as Frontend
     participant G as API Gateway
     participant A as API Lambda
     participant D as DynamoDB
 
-    U->>C: Sign up and confirm email
-    C->>S: Post-confirmation trigger
-    S->>G: POST https://api.vinsp.in/new-user {userID}
-    G->>A: routeKey POST /new-user (no auth)
-    A->>D: Put User item (theme purple-haze)
-    A->>D: Put "Demo Board" (SK b#userID)
-    A->>D: Put welcome task (SK t#userID)
-    A-->>S: data
-    S-->>C: return event
+    U->>C: Sign up, confirm email, sign in
+    C->>F: Redirect with code, exchanged for tokens
+    F->>G: GET /user
+    G->>A: routeKey GET /user (JWT)
+    A->>D: Query user item (consistent read)
+    A-->>F: [] (no user yet)
+    F->>G: POST /new-user
+    G->>A: routeKey POST /new-user (JWT)
+    A->>D: Transaction: User item, "Welcome" board (SK b#userID), its example tasks
+    A-->>F: created true
+    F->>G: GET /user and GET /boards again
 ```
 
-The sign-up Lambda has the URL `https://api.vinsp.in/new-user` hard-coded, so it always calls the deployed API regardless of environment.
+Cognito no longer calls ListPal when a user signs up, so a user has no records until their first signed-in load. There used to be a post-confirmation trigger, but Cognito also fires that on password resets, which overwrote the user's theme and starter board.
+
+The ID comes from the token, never the request body. The transaction is all-or-nothing and only the user item carries `attribute_not_exists(SK)`, so a repeat call changes nothing and returns `created: false`, and a user who deleted the welcome board doesn't get it back. If setup fails, the next load tries again. `GET /user` is a consistent read so that the read straight after setup sees the new user.
+
+`src/welcome_board.js` holds the board's categories and tasks, to show what a real board can look like. Its tasks are ordinary items, so editing, ticking and deleting them all work as usual, and a change to the content only reaches users who sign up afterwards. A few tasks start ticked, with the same expiry rule as a real tick (next Monday at 05:00, in UTC here). The board's scores start at the number of ticked tasks, so unticking one takes its point back off. Its weekly target is one more than that, so the user's first tick reaches it and shows the confetti, unless a weekly reset has zeroed the score first. A transaction is limited to 100 items, and each item costs twice the usual write capacity, once per user.
 
 ## 4. API routes
 
@@ -141,7 +143,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `GET /active-tasks?boardID=` | JWT | Tasks for a board whose `GSI1-SK` is at or after now (ownership checked alongside the task query, 400 without `boardID`) |
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
 | `GET /user` | JWT | User theme |
-| `POST /new-user` | none | Create user, demo board and welcome task |
+| `POST /new-user` | JWT | Create the caller's user, welcome board and its example tasks in one transaction. Does nothing if the user already exists. See "New user flow" above |
 | `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `create`, `update` on boards (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /delete-account` | JWT | Deletes every item in the user's partition, then their Cognito user. See "Account deletion" below |
@@ -316,7 +318,7 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - The write is one `UpdateItem` keyed on the caller's `userID` and conditioned on `attribute_exists(SK)`. A board missing from the initial read, or deleted since, returns `gone`, so an edit that arrives after a delete can't bring the board back as a partial item.
 - Board ops run before every task op, one at a time in request order. A plain write to a board item while a tick's `TransactWriteItems` is updating it would cancel the transaction, so the two never overlap within a batch.
 - A board op with no fields is `applied` without a write.
-- A create writes the whole board item with the same defaults as the demo board `POST /new-user` makes (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
+- A create writes the whole board item with defaults (scores 0, targets 7, 31 and 365, emoji 🚀, `CategoryOrder` `"[]"`, `GSI1-PK` `"b#"`), conditioned on `attribute_not_exists(SK)`. If the board is already in the initial read, an earlier attempt landed and its ack was lost, so the fields are applied as an update and the scores are kept. If the put's condition fails, another request created the board since the read: the boards are read again and the fields applied as an update.
 - Task ops are checked only after the board ops have run, and a created board is added to the boards for that check. So a batch holding a new board and its first tasks applies them all, where tasks for a board the server doesn't have are otherwise rejected as `unknown board`.
 - If a create hits a transient error (`retry`), the batch's task ops for that board also return `retry` instead of `unknown board`, so the client keeps them and resends them with the create.
 - A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
@@ -374,7 +376,7 @@ flowchart TB
 
     subgraph euw2["eu-west-2 (default provider)"]
         APIGW["API Gateway v2<br/>ListPal-Dev<br/>api.vinsp.in"]
-        L["3 Lambda functions<br/>+ log groups (1 day)"]
+        L["2 Lambda functions<br/>+ log groups (1 day)"]
         DDB[("1 DynamoDB table")]
         COG["Cognito user pool<br/>+ client + domain"]
         EVB["3 EventBridge rules"]
@@ -399,11 +401,10 @@ Key points:
 - **Terraform version:** `.tool-versions` pins 1.3.0 (`required_version >= 1.3`). AWS provider `>= 5.21`.
 - **Community modules:** `terraform-aws-modules/lambda/aws ~> 7.0`, `apigateway-v2/aws 5.0.0`, `dynamodb-table/aws 4.0.0`.
 - **Domains:** The API is served at `api.vinsp.in` (module `domain_name = "*.vinsp.in"`, `subdomains = ["api"]`). The Cognito managed login is at `auth.listpal.dev.vinsp.in`. The Route 53 hosted zone `vinsp.in` must already exist.
-- **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains, callback URLs and the sign-up URL are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
+- **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains and callback URLs are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
 - **IAM:** Each Lambda has an inline policy with `Resource: "*"`.
   - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem`, `BatchWriteItem` (board deletion) plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
-  - Sign-up: no extra policy (it only calls the public API).
   - API: also `cognito-idp:AdminDeleteUser`, scoped to this user pool, for `POST /delete-account`.
 - **Logging:** Lambda and API access log groups keep logs for one day only.
 
@@ -420,7 +421,7 @@ flowchart LR
     C --> D["terraform plan"]
     D --> E["terraform apply"]
     E --> F["archive_file zips src/ to src.zip"]
-    F --> G["Lambda modules upload src.zip<br/>to all three functions"]
+    F --> G["Lambda modules upload src.zip<br/>to both functions"]
     E --> H["Infra changes applied"]
     G --> I["One-off manual steps if first deploy"]
     H --> I
@@ -440,8 +441,8 @@ terraform apply
 How the code packaging works:
 
 - `data "archive_file" "api_lambda"` zips the whole of `src/` (including `node_modules`) to `src.zip` in the repo root.
-- All three Lambdas use `create_package = false` and `local_existing_package = ../src.zip`. They run the same artefact and differ only by `handler` (`handler.handler`, `sign_up.handler` and `score_reset.handler`).
-- Because the zip contains everything, a change to any file in `src/` redeploys all three functions.
+- Both Lambdas use `create_package = false` and `local_existing_package = ../src.zip`. They run the same artefact and differ only by `handler` (`handler.handler` and `score_reset.handler`).
+- Because the zip contains everything, a change to any file in `src/` redeploys both functions.
 - If a code change does not appear to deploy, check that `src.zip` was regenerated during the plan. The Lambda modules take the zip path as a plain string, so there is no explicit dependency on the `archive_file` resource.
 
 ### First-time deployment extras
@@ -449,8 +450,7 @@ How the code packaging works:
 1. **State bucket:** `tbm-tf-state-bucket` must already exist in `eu-west-1`.
 2. **DNS zone:** the `vinsp.in` Route 53 zone must exist.
 3. **Managed login:** after the Cognito domain is created, the new managed login UI must be switched on in the AWS console (noted in a comment in `cognito.tf`).
-4. **Cognito users:** `cognito.tf` creates three seed users (`admin@`, `tom@`, `adam@example.com`). See the security notes below before using this anywhere real.
-5. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
+4. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
 
 ### Outputs
 
@@ -518,8 +518,6 @@ Recommended improvements, if wanted: enable `point_in_time_recovery_enabled = tr
 
 These are things a reader should know before changing the system. They are not fixed in the code.
 
-- `cognito.tf` creates users with hard-coded passwords in the repository. Remove or randomise these for anything beyond throwaway development.
-- `POST /new-user` is unauthenticated and trusts the `userID` in the body. Anyone can create user, board and task records for an arbitrary ID. Securing it (for example with an IAM-authorised direct Lambda invoke from the Cognito trigger rather than a public HTTP call) would be better.
 - IAM policies use `Resource: "*"` and include stream actions the table does not use. They should be scoped to the table ARN.
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
@@ -533,7 +531,7 @@ These are things a reader should know before changing the system. They are not f
 | Add or change an API route | `terraform/locals.tf` (`lambda_routes`) and a `case` in `src/handler.js` |
 | Change DynamoDB queries or item shapes | Query builder functions at the bottom of `src/handler.js` |
 | Change throttling, CORS or authoriser | `terraform/apigateway.tf` |
-| Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf`, `signup.tf` |
+| Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf` |
 | Change cron schedules | `terraform/cronjob.tf` (`crons`), and `src/score_periods.js` to match |
 | Change how task edits affect scores, or which board settings `POST /sync` accepts | `src/task_sync.js` (`POST /sync`) |
 | Change auth, callback URLs or tokens | `terraform/cognito.tf` |

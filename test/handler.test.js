@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { mockClient } = require("aws-sdk-client-mock");
-const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand, BatchWriteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, TransactWriteItemsCommand } = require("@aws-sdk/client-dynamodb");
 const { CognitoIdentityProviderClient, AdminDeleteUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const { marshall } = require("@aws-sdk/util-dynamodb");
 
@@ -184,15 +184,102 @@ test("POST /delete-account succeeds when an earlier attempt already deleted the 
   assert.deepEqual(response, { data: { deleted: true } });
 });
 
+const newUserItems = () => mock.commandCalls(TransactWriteItemsCommand)[0].args[0].input.TransactItems.map(item => item.Put);
+
 test("POST /new-user stores no email or name", async () => {
-  mock.on(PutItemCommand).resolves({});
+  mock.on(TransactWriteItemsCommand).resolves({});
 
-  await handler({ routeKey: "POST /new-user", headers: {}, body: JSON.stringify({ userID: "u#new" }) });
+  await request("POST /new-user");
 
-  const user = mock.commandCalls(PutItemCommand)[0].args[0].input.Item;
-  assert.equal(user.SK.S, "u#new");
+  const user = newUserItems()[0].Item;
+  assert.equal(user.SK.S, "u#user");
   assert.equal(user.Email, undefined);
   assert.equal(user.Name, undefined);
+});
+
+test("POST /new-user writes the user, welcome board and its tasks for the token's user in one transaction", async () => {
+  mock.on(TransactWriteItemsCommand).resolves({});
+
+  const response = await request("POST /new-user", { body: { userID: "u#someone-else" } });
+
+  assert.deepEqual(response, { data: { created: true } });
+  assert.equal(mock.commandCalls(TransactWriteItemsCommand).length, 1);
+  const items = newUserItems();
+  const [user, board, ...tasks] = items;
+  assert.equal(user.Item.EntityType.S, "User");
+  assert.equal(board.Item.EntityType.S, "Board");
+  assert.equal(board.Item.Board.S, "Welcome");
+  assert.equal(board.Item.SK.S, "b#u#user");
+  assert.ok(tasks.length > 1);
+  assert.ok(tasks.every(put => put.Item.EntityType.S === "Task" && put.Item["GSI1-PK"].S === "b#u#user"));
+  assert.ok(items.every(put => put.Item.PK.S === "u#user"));
+});
+
+test("POST /new-user writes task items with every field a task created through /sync has", async () => {
+  mock.on(TransactWriteItemsCommand).resolves({});
+
+  await request("POST /new-user");
+
+  const [, , ...tasks] = newUserItems();
+  const expected = ["PK", "SK", "EntityType", "GSI1-PK", "GSI1-SK", "CreatedDate", "Description", "Category", "Emoji", "Important", "Link", "CompletedDate", "ExpiryDate", "ExpiryDateTTL"].sort();
+  tasks.forEach(put => assert.deepEqual(Object.keys(put.Item).sort(), expected));
+});
+
+test("POST /new-user stores the board's scores, emoji and category order as the frontend reads them", async () => {
+  mock.on(TransactWriteItemsCommand).resolves({});
+
+  await request("POST /new-user");
+
+  const [, board, ...tasks] = newUserItems();
+  const ticked = tasks.filter(put => put.Item.CompletedDate.S !== "nil").length;
+  assert.equal(board.Item.WScore.N, String(ticked));
+  assert.equal(board.Item.MScore.N, String(ticked));
+  assert.equal(board.Item.YScore.N, String(ticked));
+  assert.equal(board.Item.WTarget.N, "4");
+  assert.equal(board.Item.MTarget.N, "31");
+  assert.equal(board.Item.YTarget.N, "365");
+  assert.equal(board.Item.Emoji.S, "👋");
+  assert.deepEqual(JSON.parse(board.Item.CategoryOrder.S), [...new Set(tasks.map(put => put.Item.Category.S))]);
+});
+
+test("POST /new-user guards only the user item, so a deleted welcome board stays deleted", async () => {
+  mock.on(TransactWriteItemsCommand).resolves({});
+
+  await request("POST /new-user");
+
+  const [user, ...rest] = newUserItems();
+  assert.equal(user.ConditionExpression, "attribute_not_exists(SK)");
+  assert.ok(rest.every(put => put.ConditionExpression === undefined));
+});
+
+test("POST /new-user for a user already set up succeeds without changing anything", async () => {
+  mock.on(TransactWriteItemsCommand).rejects(Object.assign(new Error("cancelled"), {
+    name: "TransactionCanceledException",
+    CancellationReasons: [{ Code: "ConditionalCheckFailed" }, { Code: "None" }, { Code: "None" }]
+  }));
+
+  const response = await request("POST /new-user");
+
+  assert.deepEqual(response, { data: { created: false } });
+});
+
+test("POST /new-user is a 500 when the transaction fails for any other reason", async () => {
+  mock.on(TransactWriteItemsCommand).rejects(Object.assign(new Error("cancelled"), {
+    name: "TransactionCanceledException",
+    CancellationReasons: [{ Code: "TransactionConflict" }, { Code: "None" }, { Code: "None" }]
+  }));
+
+  const response = await request("POST /new-user");
+
+  assert.equal(response.statusCode, 500);
+});
+
+test("GET /user reads consistently, as the frontend reads it straight after POST /new-user", async () => {
+  mock.on(QueryCommand).resolves({ Items: [marshall({ Theme: "purple-haze" })] });
+
+  await request("GET /user");
+
+  assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead, true);
 });
 
 test("POST /board-scores for another user's board is a 403 with nothing written", async () => {

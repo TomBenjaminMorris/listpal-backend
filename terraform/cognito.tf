@@ -25,10 +25,6 @@ resource "aws_cognito_user_pool" "this" {
   user_attribute_update_settings {
     attributes_require_verification_before_update = ["email"]
   }
-
-  lambda_config {
-    post_confirmation = module.sign_up_lambda_function.lambda_function_arn
-  }
 }
 
 resource "aws_cognito_user_pool_domain" "custom_domain" {
@@ -58,56 +54,5 @@ resource "aws_cognito_user_pool_client" "userpool_client" {
     access_token  = "minutes"
     id_token      = "minutes"
     refresh_token = "days"
-  }
-}
-
-resource "aws_cognito_user" "Admin" {
-  user_pool_id = aws_cognito_user_pool.this.id
-  username     = "admin@example.com"
-  password     = "Password123!"
-  attributes = {
-    email          = "admin@example.com"
-    email_verified = true
-    given_name     = "Admin"
-    family_name    = "User"
-  }
-
-  # Details edited in Settings would otherwise be reverted by the next apply
-  lifecycle {
-    ignore_changes = [attributes]
-  }
-}
-
-resource "aws_cognito_user" "Tom" {
-  user_pool_id = aws_cognito_user_pool.this.id
-  username     = "tom@example.com"
-  password     = "Password123!"
-  attributes = {
-    email          = "tom@example.com"
-    email_verified = true
-    given_name     = "Tom"
-    family_name    = "Morris"
-  }
-
-  # Details edited in Settings would otherwise be reverted by the next apply
-  lifecycle {
-    ignore_changes = [attributes]
-  }
-}
-
-resource "aws_cognito_user" "Adam" {
-  user_pool_id = aws_cognito_user_pool.this.id
-  username     = "adam@example.com"
-  password     = "Password123!"
-  attributes = {
-    email          = "adam@example.com"
-    email_verified = true
-    given_name     = "Adam"
-    family_name    = "Cooper"
-  }
-
-  # Details edited in Settings would otherwise be reverted by the next apply
-  lifecycle {
-    ignore_changes = [attributes]
   }
 }
