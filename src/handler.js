@@ -1,8 +1,9 @@
 "use strict";
-const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, PutItemCommand, DeleteItemCommand, BatchWriteItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, TransactWriteItemsCommand } = require("@aws-sdk/client-dynamodb");
 const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
+const { welcomeBoard } = require("./welcome_board");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
 
@@ -60,11 +61,7 @@ module.exports.handler = async (event) => {
 
       //// ADD USER ////
       case "POST /new-user":
-        writeResult = await add(addUser(body));
-        const boardBody = { userID: body.userID, boardName: "Demo Board", boardID: "b#" + body.userID }
-        await add(addBoard(body.userID, boardBody));
-        const taskBody = { userID: body.userID, createdDate: "nil", expiryDate: "nil", taskID: "t#" + body.userID, description: "Start creating some new tasks!", completedDate: "nil", category: "Welcome", emoji: "✅", boardID: "b#" + body.userID }
-        await add(addTask(body.userID, taskBody));
+        writeResult = await createNewUser(userID);
         break;
 
 
@@ -164,6 +161,26 @@ async function verifyBoard(userID, boardID) {
   return !!result.Item;
 }
 
+async function createNewUser(userID) {
+  const { board, tasks } = welcomeBoard(userID, Date.now());
+  try {
+    await client.send(new TransactWriteItemsCommand({
+      TransactItems: [
+        // Only the user item is guarded: it exists once setup has run, so a user who deleted the welcome board doesn't get it back
+        { Put: { ...addUser({ userID }), ConditionExpression: "attribute_not_exists(SK)" } },
+        { Put: addBoard(userID, board) },
+        ...tasks.map(task => ({ Put: addTask(userID, task) }))
+      ]
+    }));
+    return { created: true };
+  } catch (error) {
+    const alreadySetUp = error.name === "TransactionCanceledException" &&
+      (error.CancellationReasons ?? []).some(reason => reason.Code === "ConditionalCheckFailed");
+    if (alreadySetUp) return { created: false };
+    throw error;
+  }
+}
+
 async function query(input) {
   const command = new QueryCommand(input);
   const result = await client.send(command);
@@ -172,12 +189,6 @@ async function query(input) {
 
 async function update(input) {
   const command = new UpdateItemCommand(input);
-  const result = await client.send(command);
-  return result
-}
-
-async function add(input) {
-  const command = new PutItemCommand(input);
   const result = await client.send(command);
   return result
 }
@@ -228,7 +239,8 @@ function getUser(userID) {
   return {
     "TableName": tableName,
     "ScanIndexForward": true,
-    "ConsistentRead": false,
+    // The frontend reads this straight after POST /new-user, and a missing user sends it back to set up again
+    "ConsistentRead": true,
     "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
     "ProjectionExpression": "Theme",
     "ExpressionAttributeValues": {
@@ -249,7 +261,7 @@ function addTask(userID, body) {
       "GSI1-SK": { "S": body.expiryDate },
       "SK": { "S": body.taskID },
       "ExpiryDate": { "S": body.expiryDate },
-      "ExpiryDateTTL": { "N": "0" },
+      "ExpiryDateTTL": { "N": String(body.expiryDateTTL) },
       "GSI1-PK": { "S": body.boardID },
       "Description": { "S": body.description },
       "PK": { "S": userID },
@@ -257,6 +269,8 @@ function addTask(userID, body) {
       "Category": { "S": body.category },
       "EntityType": { "S": "Task" },
       "Emoji": { "S": body.emoji },
+      "Important": { "S": body.important },
+      "Link": { "S": body.link },
     },
     "TableName": tableName
   }
@@ -286,16 +300,16 @@ function addBoard(userID, body) {
       "PK": { "S": userID },
       "Board": { "S": body.boardName },
       "EntityType": { "S": "Board" },
-      "WScore": { "N": String(0) },
-      "MScore": { "N": String(0) },
-      "YScore": { "N": String(0) },
-      "WTarget": { "N": String(7) },
+      "WScore": { "N": String(body.score) },
+      "MScore": { "N": String(body.score) },
+      "YScore": { "N": String(body.score) },
+      "WTarget": { "N": String(body.weeklyTarget) },
       "MTarget": { "N": String(31) },
       "YTarget": { "N": String(365) },
       "GSI1-SK": { "S": body.boardID },
       "GSI1-PK": { "S": "b#" },
-      "Emoji": { "S": "🚀" },
-      "CategoryOrder": { "S": "[]" },
+      "Emoji": { "S": body.emoji },
+      "CategoryOrder": { "S": body.categoryOrder },
     },
     "TableName": tableName
   }

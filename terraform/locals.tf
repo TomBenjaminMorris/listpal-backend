@@ -14,7 +14,7 @@ locals {
     },
     new_user = {
       route     = "POST /new-user"
-      protected = false
+      protected = true
     },
     sync = {
       route     = "POST /sync"
