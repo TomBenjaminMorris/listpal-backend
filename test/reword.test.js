@@ -15,7 +15,7 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url")
 const token = `${encode({ alg: "none" })}.${encode({ sub: "user" })}.sig`;
 const realFetch = global.fetch;
 
-let handler, fetchCalls, fetchReply;
+let handler, fetchCalls, fetchReply, moderationCalls, moderationReply;
 const request = body => handler({
   routeKey: "POST /reword-task",
   headers: { authorization: token },
@@ -30,6 +30,7 @@ const reply = (text, extra = {}) => ({
   ...extra
 });
 const jsonResponse = (status, body) => new Response(JSON.stringify(body), { status });
+const verdict = (flagged, categories = {}, scores = {}) => jsonResponse(200, { results: [{ flagged, categories, category_scores: scores }] });
 
 test.beforeEach(() => {
   process.env.OpenAIKeyParameter = "/listpal/dev/openai-api-key";
@@ -39,10 +40,18 @@ test.beforeEach(() => {
   dynamoMock.on(UpdateItemCommand).resolves({});
   ssmMock.on(GetParameterCommand).resolves({ Parameter: { Value: "sk-test" } });
   fetchCalls = [];
+  moderationCalls = [];
   fetchReply = () => jsonResponse(200, reply("Book a dentist appointment"));
+  moderationReply = () => verdict(false, { violence: false });
+  // fetchCalls holds only the reword requests, so counts and indexes stay about the model
   global.fetch = async (url, options) => {
-    fetchCalls.push({ url, options, body: JSON.parse(options.body) });
-    return fetchReply();
+    const call = { url, options, body: JSON.parse(options.body) };
+    if (url.endsWith("/moderations")) {
+      moderationCalls.push(call);
+      return moderationReply();
+    }
+    fetchCalls.push(call);
+    return fetchReply(fetchCalls.length);
   };
   // A fresh module each time, so the cached key from one test can't leak into the next
   delete require.cache[require.resolve("../src/reword")];
@@ -67,7 +76,7 @@ test("sends the task as JSON data with the model, token cap and store off", asyn
   assert.equal(call.body.store, false);
   assert.equal(call.body.max_output_tokens, 300);
   assert.deepEqual(call.body.reasoning, { effort: "minimal" });
-  assert.deepEqual(JSON.parse(call.body.input), { task: "dentist thing", category: "Health", board: "Life" });
+  assert.deepEqual(JSON.parse(call.body.input), { task_lines: ["dentist thing"], category: "Health", board: "Life" });
   assert.match(call.body.safety_identifier, /^[0-9a-f]{64}$/);
   assert.doesNotMatch(call.body.safety_identifier, /user/);
 });
@@ -86,6 +95,128 @@ test("reads the key again after OpenAI rejects it", async () => {
   await request({ text: "b" });
   assert.equal(ssmMock.commandCalls(GetParameterCommand).length, 2);
 });
+
+test("sends each line separately, leaving blank lines out", async () => {
+  fetchReply = () => jsonResponse(200, reply("Pack\nBook a taxi"));
+  await request({ text: "pack\n\nbook taxi" });
+  assert.deepEqual(JSON.parse(fetchCalls[0].body.input).task_lines, ["pack", "book taxi"]);
+});
+
+test("puts blank lines back where they were", async () => {
+  fetchReply = () => jsonResponse(200, reply("Pack\n\n\nBook a taxi"));
+  const response = await request({ text: "pack\n\nbook taxi\n\n\nsleep" });
+  // Two lines back for three sent: the model's own layout is kept
+  assert.equal(response.data.text, "Pack\nBook a taxi");
+
+  fetchReply = () => jsonResponse(200, reply("Pack\nBook a taxi\nGo to bed"));
+  const restored = await request({ text: "pack\n\nbook taxi\n\n\nsleep" });
+  assert.equal(restored.data.text, "Pack\n\nBook a taxi\n\n\nGo to bed");
+});
+
+test("asks once more when the reply only changes capitals or punctuation", async () => {
+  fetchReply = call => jsonResponse(200, reply(call === 1 ? "Renew passport." : "Get the passport renewed"));
+  const response = await request({ text: "renew passport" });
+  assert.equal(response.data.text, "Get the passport renewed");
+  assert.equal(fetchCalls.length, 2);
+  const [task, previous, nudge] = fetchCalls[1].body.input;
+  assert.equal(task.content, fetchCalls[0].body.input);
+  assert.deepEqual(previous, { role: "assistant", content: "Renew passport." });
+  assert.match(nudge.content, /different words/);
+  // Both attempts count as one reword
+  assert.equal(counterCalls().length, 2);
+});
+
+test("keeps the first reply when the retry fails", async () => {
+  fetchReply = call => call === 1
+    ? jsonResponse(200, reply("Renew passport"))
+    : jsonResponse(500, { error: { type: "server_error" } });
+  const response = await request({ text: "renew passport" });
+  assert.equal(response.data.text, "Renew passport");
+});
+
+test("doesn't ask again when the wording changed", async () => {
+  await request({ text: "dentist thing" });
+  assert.equal(fetchCalls.length, 1);
+});
+
+test("moderation and both attempts share one deadline", async () => {
+  fetchReply = call => jsonResponse(200, reply(call === 1 ? "Renew passport" : "Get the passport renewed"));
+  await request({ text: "renew passport" });
+  assert.equal(fetchCalls[0].options.signal, fetchCalls[1].options.signal);
+  assert.equal(moderationCalls[0].options.signal, fetchCalls[0].options.signal);
+});
+
+test("keeps the first reply when the retry is much longer than the task", async () => {
+  fetchReply = call => jsonResponse(200, reply(call === 1 ? "Renew passport" : "a".repeat(100)));
+  const response = await request({ text: "renew passport" });
+  assert.equal(response.data.text, "Renew passport");
+});
+
+test("a reply much longer than the task is a 502", async () => {
+  // Twice the task's 4 characters plus 40 is the most allowed
+  fetchReply = () => jsonResponse(200, reply("a".repeat(49)));
+  const tooLong = await request({ text: "cats" });
+  assert.equal(tooLong.statusCode, 502);
+
+  fetchReply = () => jsonResponse(200, reply("a".repeat(48)));
+  const longest = await request({ text: "cats" });
+  assert.equal(longest.data.text.length, 48);
+});
+
+test("checks the task, category and board with moderation before the model sees them", async () => {
+  await request({ text: " dentist thing ", category: "Health", board: "Life" });
+  assert.equal(moderationCalls.length, 1);
+  const [call] = moderationCalls;
+  assert.equal(call.url, "https://api.openai.com/v1/moderations");
+  assert.equal(call.options.headers.Authorization, "Bearer sk-test");
+  assert.deepEqual(call.body, { model: "omni-moderation-latest", input: "dentist thing\nHealth\nLife" });
+});
+
+test("flagged text is a 400 flagged, never reaches the model and still counts", async (t) => {
+  const warned = [];
+  t.mock.method(console, "warn", (...args) => warned.push(args.join(" ")));
+  moderationReply = () => verdict(true, { violence: true, harassment: false }, { violence: 0.94, harassment: 0.01 });
+  const response = await request({ text: "something nasty" });
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(JSON.parse(response.body), { error: "flagged" });
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(counterCalls().length, 2);
+  assert.deepEqual(warned, ["Reword refused by moderation: violence"]);
+});
+
+test("a flag below the threshold still reaches the model", async () => {
+  // "finish the murder mystery book" scored 0.43 and was flagged by OpenAI
+  moderationReply = () => verdict(true, { violence: true }, { violence: 0.43 });
+  const response = await request({ text: "finish the murder mystery book" });
+  assert.equal(fetchCalls.length, 1);
+  assert.ok(response.data.text);
+});
+
+test("a flag at the threshold is refused", async () => {
+  moderationReply = () => verdict(true, { violence: true }, { violence: 0.7 });
+  const response = await request({ text: "dentist thing" });
+  assert.deepEqual(JSON.parse(response.body), { error: "flagged" });
+});
+
+test("sexual content involving minors is refused at any score", async () => {
+  moderationReply = () => verdict(true, { "sexual/minors": true }, { "sexual/minors": 0.2 });
+  const response = await request({ text: "dentist thing" });
+  assert.deepEqual(JSON.parse(response.body), { error: "flagged" });
+  assert.equal(fetchCalls.length, 0);
+});
+
+for (const [name, makeVerdict] of [
+  ["a moderation error", () => jsonResponse(500, { error: { type: "server_error" } })],
+  ["a moderation reply with no result", () => jsonResponse(200, { results: [] })],
+  ["a moderation timeout", () => { throw new DOMException("The operation was aborted", "TimeoutError"); }]
+]) {
+  test(`${name} is a 502 and never reaches the model`, async () => {
+    moderationReply = makeVerdict;
+    const response = await request({ text: "dentist thing" });
+    assert.equal(response.statusCode, 502);
+    assert.equal(fetchCalls.length, 0);
+  });
+}
 
 test("strips quotation marks wrapped around the reply", async () => {
   fetchReply = () => jsonResponse(200, reply("  “Book a dentist appointment”\n"));
@@ -231,6 +362,10 @@ test("never logs task, category or board text", async (t) => {
   await request({ text: "secret task", category: "secret category", board: "secret board" });
   fetchReply = () => jsonResponse(200, reply("secret reply"));
   await request({ text: "secret task", category: "secret category", board: "secret board" });
-  assert.ok(logged.length > 0);
+  fetchReply = () => jsonResponse(200, reply("secret " + "reply ".repeat(30)));
+  await request({ text: "secret task", category: "secret category", board: "secret board" });
+  moderationReply = () => verdict(true, { violence: true }, { violence: 0.94 });
+  await request({ text: "secret task", category: "secret category", board: "secret board" });
+  assert.ok(logged.length >= 3);
   assert.doesNotMatch(logged.join("\n"), /secret/);
 });
