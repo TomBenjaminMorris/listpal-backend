@@ -11,7 +11,7 @@
 ## Working rules
 
 - Never commit secrets, real exports or personal data. `test-data/exports` contains real email addresses.
-- Adding an API route needs both a `lambda_routes` entry in `terraform/locals.tf` and a `case` in `src/handler.js`.
+- Adding an API route needs both a `lambda_routes` entry in `terraform/locals.tf` and a `case` in `src/handler.js`. A route served by its own Lambda (such as `POST /reword-task`) names it with a `lambda` key from `route_lambdas` instead of the `case`.
 - Cron rule names are parsed by `src/score_reset.js` (`weekly`, `monthly`, `yearly`). Do not rename them without updating that file.
 - Do not run `terraform apply` or any AWS write command unless explicitly asked. Running `terraform plan` is fine.
 - Match the style of the surrounding code, including comment density and naming.
