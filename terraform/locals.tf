@@ -35,7 +35,20 @@ locals {
     delete_account = {
       route     = "POST /delete-account"
       protected = true
+    },
+    reword_task = {
+      route     = "POST /reword-task"
+      protected = true
+      lambda    = "reword"
+      # Each request is a paid OpenAI call, so this route gets far less than the stage default
+      throttling_rate_limit  = 2
+      throttling_burst_limit = 5
     }
+  }
+
+  route_lambdas = {
+    api    = module.lambda_function.lambda_function_arn
+    reword = module.reword_lambda_function.lambda_function_arn
   }
 
   apigateway_routes = {
@@ -44,9 +57,12 @@ locals {
       authorization_type   = v.protected ? "JWT" : "NONE"
       authorizer_key       = v.protected ? "cognito" : ""
       authorization_scopes = v.protected ? ["openid"] : []
+      # null falls back to the stage default
+      throttling_rate_limit  = try(v.throttling_rate_limit, null)
+      throttling_burst_limit = try(v.throttling_burst_limit, null)
 
       integration = {
-        uri                    = module.lambda_function.lambda_function_arn
+        uri                    = local.route_lambdas[try(v.lambda, "api")]
         payload_format_version = "2.0"
       }
     }

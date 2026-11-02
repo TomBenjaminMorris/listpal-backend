@@ -11,7 +11,8 @@ The backend is fully serverless on AWS, defined in Terraform, and has no CI/CD p
 | Concern | Choice |
 | --- | --- |
 | Compute | AWS Lambda, Node.js 20 (CommonJS) |
-| API | API Gateway v2 (HTTP API), single Lambda integration |
+| API | API Gateway v2 (HTTP API): one Lambda for most routes, a separate one for `POST /reword-task` |
+| AI | OpenAI Responses API (`gpt-5-nano`), key in SSM Parameter Store, used only to reword a task |
 | Auth | Cognito user pool, JWT authoriser, OAuth code flow with a custom domain |
 | Data | DynamoDB, one table, single-table design |
 | Scheduling | EventBridge (CloudWatch Events) cron rules |
@@ -34,6 +35,7 @@ listpal-backend/
 │   ├── score_periods.js       Which score periods (W, M, Y) a completion counts towards
 │   ├── score_reset.js         Cron Lambda: zeroes board scores
 │   ├── welcome_board.js       The example board and tasks a new user starts with
+│   ├── reword.js              Reword Lambda: POST /reword-task, calls OpenAI
 │   ├── package.json / yarn.lock
 │   └── .tool-versions         nodejs 20.0.0
 ├── src.zip                    Build artefact written by Terraform (gitignored)
@@ -44,6 +46,7 @@ listpal-backend/
 │   ├── locals.tf              Route table (lambda_routes) and common tags
 │   ├── apigateway.tf          HTTP API, JWT authoriser, throttling, logs
 │   ├── lambda.tf              API Lambda and the zip build
+│   ├── reword.tf              Reword Lambda and its access to the OpenAI key
 │   ├── cronjob.tf             Score reset rules and Lambda
 │   ├── cognito.tf             User pool (emails verified before they change), domain, client
 │   ├── acm.tf / route53.tf    Certificate (us-east-1) and DNS for the login domain
@@ -77,6 +80,12 @@ flowchart LR
     subgraph Compute["Lambda (nodejs20.x, one zip)"]
         L1["listpal_dev<br/>handler.handler<br/>1024 MB, 15 s timeout"]
         L2["listpal_score_reset_dev<br/>score_reset.handler"]
+        L3["listpal_reword_dev<br/>reword.handler<br/>256 MB, 10 s timeout"]
+    end
+
+    subgraph AI["Task reword"]
+        SSM[("SSM Parameter Store<br/>OpenAI key (SecureString)")]
+        OAI["OpenAI Responses API"]
     end
 
     subgraph Data["DynamoDB (eu-west-2)"]
@@ -93,6 +102,10 @@ flowchart LR
     L1 --> T1
     EB -->|"weekly, monthly, yearly"| L2
     L2 --> T1
+    APIGW -->|"POST /reword-task"| L3
+    L3 -->|"cold start"| SSM
+    L3 --> OAI
+    L3 -->|"quota counters"| T1
 ```
 
 ### Request lifecycle
@@ -136,7 +149,7 @@ The ID comes from the token, never the request body. The transaction is all-or-n
 
 ## 4. API routes
 
-Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into API Gateway. Each maps to a `case` in `src/handler.js`. All routes go to the same Lambda.
+Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into API Gateway. Each maps to a `case` in `src/handler.js`, and all go to the same Lambda, except `POST /reword-task`, whose `lambda = "reword"` key sends it to its own function through `route_lambdas`. A route may also set its own `throttling_rate_limit` and `throttling_burst_limit`.
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
@@ -148,6 +161,7 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | `POST /user-theme` | JWT | Set theme |
 | `POST /delete-account` | JWT | Deletes every item in the user's partition, then their Cognito user. See "Account deletion" below |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
+| `POST /reword-task` | JWT | Returns a clearer wording of a task's text from OpenAI. Writes no task: the frontend saves the new text through `POST /sync`. Runs on its own Lambda. See "Task reword" below |
 | `POST /board-scores` | JWT | Manual edit of `YScore`, `MScore`, `WScore` (non-negative numbers, ownership checked). Ticking tasks changes scores through `POST /sync` instead |
 
 ### Board ownership check
@@ -237,7 +251,7 @@ sequenceDiagram
 
 The older per-field task routes (`all-tasks`, `expired-tasks`, `task-description`, `task-details`, `task-checked`, `task-important`, `new-task`, `delete-task`) were superseded by `sync`. `POST /new-board`, `/rename-board`, `/board-emoji`, `/board-category-order` and `/board-targets` were removed once the frontend sent board creates and settings through `sync` instead. None of their code remains; it is in git history.
 
-Gateway settings: HTTP API, CORS open to all origins with preflights cacheable for 2 hours (`max_age = 7200`, so browsers skip the `OPTIONS` round trip on repeat requests), default throttling of 50 requests per second with a burst of 100, access logs to CloudWatch with one day retention.
+Gateway settings: HTTP API, CORS open to all origins with preflights cacheable for 2 hours (`max_age = 7200`, so browsers skip the `OPTIONS` round trip on repeat requests), default throttling of 50 requests per second with a burst of 100 (`POST /reword-task` alone gets 2 with a burst of 5, as each request is a paid OpenAI call), access logs to CloudWatch with one day retention.
 
 ### Task sync
 
@@ -323,6 +337,61 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - If a create hits a transient error (`retry`), the batch's task ops for that board also return `retry` instead of `unknown board`, so the client keeps them and resends them with the create.
 - A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
 
+### Task reword
+
+`POST /reword-task` takes `{ text, category, board }` and returns `{ data: { text } }`: the task reworded to start with a verb and say exactly what to do. The category and board names are context only. The route takes text and returns text, and never reads or writes a task, so a reword reaches DynamoDB the way a typed edit does: through the client's outbox and `POST /sync`. Its only writes are the daily quota counters. The code is `src/reword.js`.
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant G as API Gateway
+    participant R as Reword Lambda
+    participant D as DynamoDB
+    participant S as SSM Parameter Store
+    participant O as OpenAI
+
+    F->>G: POST /reword-task {text, category, board}
+    G->>G: JWT authoriser, route throttle (2/s, burst 5)
+    G->>R: routeKey POST /reword-task
+    R->>D: UpdateItem user counter, if under 30
+    alt user at limit
+        R-->>F: 429 daily_limit
+    end
+    R->>D: UpdateItem global counter, if under 500
+    alt everyone at limit
+        R->>D: UpdateItem user counter minus 1 (refund)
+        R-->>F: 429 busy_today
+    end
+    opt cold start, or the key was rejected
+        R->>S: GetParameter, decrypted
+    end
+    R->>O: POST /v1/responses (6 s limit)
+    alt usable reply
+        O-->>R: reworded text
+        R-->>F: data.text
+    else error, timeout, cut short, empty or over 500 characters
+        R-->>F: 502 reword_unavailable
+    end
+```
+
+- **Its own Lambda.** `listpal_reword_dev` runs the same zip with handler `reword.handler`. Its role can read the one SSM parameter and update items in the table, nothing else, and the main API Lambda can't read the key at all.
+- **Daily quotas.** Each user gets 30 rewords per UTC day and everyone together 500, so one person can't spend without limit through many accounts. At `gpt-5-nano` prices the global cap keeps the worst day to a cent or two. Each is a counter item (see the data model) bumped by an `UpdateItem` with `ADD Count 1`, conditioned on the count being missing or under the limit. Behaviour that matters when changing this code:
+  - The two counters are separate updates, not a transaction. Every reword touches the one global item, and concurrent transactions on an item cancel each other with `TransactionConflict`, where concurrent updates are applied in turn.
+  - The user's counter goes first, so a user at their limit is refused (429 `daily_limit`) without using up the global allowance.
+  - If the global counter refuses (429 `busy_today`), the user's count is taken back with `ADD Count -1`. The refund is best effort: if it fails, the user loses one reword for the day.
+  - The quota is spent before the OpenAI call and isn't refunded when that call fails, so a failing call can't be retried without limit.
+  - Any other DynamoDB error is a 500, and OpenAI isn't called.
+- **The key** is an SSM `SecureString`, `/listpal/dev/openai-api-key`, encrypted with the AWS-managed `aws/ssm` key. Terraform creates the parameter (`aws_ssm_parameter.openai_key` in `terraform/reword.tf`) with a placeholder value and ignores later changes to it, so it tracks the parameter's name, type and encryption while only the placeholder reaches the state file. The real key is set by hand (see "First-time deployment extras"). Terraform gives the Lambda only its name. The Lambda reads it on the first request and keeps it in memory, and forgets it when OpenAI answers 401, so a replaced key is picked up on the next request.
+- **Validation (400):** `text` must be a string of 1 to 500 characters after trimming. `category` and `board` are optional strings of at most 100.
+- **The OpenAI request** is a plain `fetch` (no SDK in the zip) to the Responses API with model `gpt-5-nano`, the cheapest text model on OpenAI's pricing page on 2 November 2026, at $0.05 input and $0.40 output per million tokens. A reword is a few hundred tokens, a few thousandths of a cent. The task goes in as a JSON string so the model treats it as data, and the instructions say never to follow it. Other settings:
+  - `reasoning: { effort: "minimal" }`, as `gpt-5-nano` is a reasoning model and its reasoning tokens are billed as output
+  - `max_output_tokens: 300`, which includes reasoning and leaves room above the longest allowed task
+  - `store: false`
+  - `safety_identifier`, a SHA-256 hash of the user ID, so OpenAI can tell one abusive user from the rest without learning who they are
+- **The prompt** asks for an action-first wording about as short as the original, always different from it, with no added facts, the same language and spelling conventions, kept line breaks, and no new emoji, trailing full stop or quotation marks. It lives in `INSTRUCTIONS` in `src/reword.js`. Quotation marks wrapped round the whole reply are stripped anyway.
+- **Failures:** an OpenAI error, a timeout, a reply cut short by the token cap (`status` other than `completed`), or one that is empty or over 500 characters returns 502 `{ error: "reword_unavailable" }`. A failed key read is a 500. Only the error's name, and OpenAI's status and error type, are logged, never task text.
+- **Timeouts:** OpenAI gets 6 s, under the Lambda's 10 s, so a slow reply ends as a 502 rather than a gateway timeout. The cold start's SSM read fits in the gap.
+
 ## 5. Data model
 
 DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S), a global secondary index `GSI1` (`GSI1-PK`, `GSI1-SK`, projection ALL), and TTL on `ExpiryDateTTL`.
@@ -334,6 +403,10 @@ DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S
 | User | `u#<cognito sub>` | `u#<sub>` | `u#` | `u#<sub>` | `Theme`. Email and name live only in Cognito |
 | Board | `u#<sub>` | `b#<uuid>` | `b#` | `b#<uuid>` | `Board`, `Emoji`, `CategoryOrder` (JSON string), `WScore/MScore/YScore`, `WTarget/MTarget/YTarget` (defaults 7, 31, 365) |
 | Task | `u#<sub>` | `t#<uuid>` | `b#<boardUuid>` | expiry as epoch ms string, or `"nil"` | `Description`, `Category`, `Emoji`, `CreatedDate`, `CompletedDate`, `ExpiryDate`, `ExpiryDateTTL`, `Important`, `Link` |
+| Reword counter (user) | `u#<sub>` | `ai#<YYYY-MM-DD>` (UTC) | none | none | `Count`, `ExpiryDateTTL` (two days after the day starts, in epoch seconds) |
+| Reword counter (global) | `ai#global` | `ai#<YYYY-MM-DD>` (UTC) | none | none | `Count`, `ExpiryDateTTL` as above |
+
+The counters stay out of every other access pattern: `GET /user` matches its `SK` exactly, board queries need `b#`, and they have no `GSI1` keys. Account deletion removes a user's counters with the rest of their partition.
 
 Access patterns:
 
@@ -376,7 +449,8 @@ flowchart TB
 
     subgraph euw2["eu-west-2 (default provider)"]
         APIGW["API Gateway v2<br/>ListPal-Dev<br/>api.vinsp.in"]
-        L["2 Lambda functions<br/>+ log groups (1 day)"]
+        L["3 Lambda functions<br/>+ log groups (1 day)"]
+        SSMP[("SSM parameter<br/>OpenAI key, value set by hand")]
         DDB[("1 DynamoDB table")]
         COG["Cognito user pool<br/>+ client + domain"]
         EVB["3 EventBridge rules"]
@@ -406,6 +480,7 @@ Key points:
   - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem`, `BatchWriteItem` (board deletion) plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
   - API: also `cognito-idp:AdminDeleteUser`, scoped to this user pool, for `POST /delete-account`.
+  - Reword: only `ssm:GetParameter` on the OpenAI key's parameter and `dynamodb:UpdateItem` on the main table (for the quota counters), both scoped to their ARNs. Decryption with the AWS-managed `aws/ssm` key needs no KMS statement. API Gateway may invoke it only for `POST /reword-task`.
 - **Logging:** Lambda and API access log groups keep logs for one day only.
 
 ## 8. Deployment
@@ -450,7 +525,13 @@ How the code packaging works:
 1. **State bucket:** `tbm-tf-state-bucket` must already exist in `eu-west-1`.
 2. **DNS zone:** the `vinsp.in` Route 53 zone must exist.
 3. **Managed login:** after the Cognito domain is created, the new managed login UI must be switched on in the AWS console (noted in a comment in `cognito.tf`).
-4. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
+4. **OpenAI key:** `terraform apply` creates `/listpal/dev/openai-api-key` holding a placeholder, and rewords fail with a 502 until the real key replaces it. Set it by hand, so the key stays out of Terraform state and shell history:
+   ```sh
+   read -rs KEY && aws ssm put-parameter --region eu-west-2 --overwrite \
+     --name /listpal/dev/openai-api-key --type SecureString --value "$KEY"; unset KEY
+   ```
+   The same command replaces the key later. Never `terraform import` the parameter once it holds the real key, as the import would write the key into state. The key belongs to a dedicated OpenAI project limited to `gpt-5-nano`, paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
+5. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
 
 ### Outputs
 
@@ -522,16 +603,19 @@ These are things a reader should know before changing the system. They are not f
 - CORS allows every origin.
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
 - Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is not atomic either: a failure partway leaves the board and some of its tasks, and deleting it again finishes the job.
+- `POST /reword-task` sends task text and its category and board names to OpenAI. OpenAI doesn't train on API data by default, but keeps requests for up to 30 days for abuse monitoring, even with `store: false`. Spend is limited by the route throttle, the daily quotas, and finally the OpenAI project's prepaid credits.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
 ## 11. Where to look
 
 | I want to... | Go to |
 | --- | --- |
-| Add or change an API route | `terraform/locals.tf` (`lambda_routes`) and a `case` in `src/handler.js` |
+| Add or change an API route | `terraform/locals.tf` (`lambda_routes`) and a `case` in `src/handler.js`. A route on its own Lambda instead names it with a `lambda` key, listed in `route_lambdas` |
 | Change DynamoDB queries or item shapes | Query builder functions at the bottom of `src/handler.js` |
 | Change throttling, CORS or authoriser | `terraform/apigateway.tf` |
 | Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf` |
+| Change the reword prompt, model, daily quotas or limits | `src/reword.js`, and the route throttle in `terraform/locals.tf` |
+| Change the reword Lambda or its key access | `terraform/reword.tf` |
 | Change cron schedules | `terraform/cronjob.tf` (`crons`), and `src/score_periods.js` to match |
 | Change how task edits affect scores, or which board settings `POST /sync` accepts | `src/task_sync.js` (`POST /sync`) |
 | Change auth, callback URLs or tokens | `terraform/cognito.tf` |
