@@ -4,6 +4,7 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
 const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
 const { welcomeBoard } = require("./welcome_board");
+const { REWORD_TONES } = require("./reword_tones");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
 
@@ -68,6 +69,15 @@ module.exports.handler = async (event) => {
       //// UPDATE USER THEME ////
       case "POST /user-theme":
         writeResult = await update(updateUserTheme(userID, body.theme));
+        break;
+
+
+      //// UPDATE USER REWORD TONE ////
+      case "POST /user-reword-tone":
+        if (!Object.hasOwn(REWORD_TONES, body?.tone)) {
+          return respond(400, { error: `tone must be one of ${Object.keys(REWORD_TONES).join(", ")}` });
+        }
+        writeResult = await update(updateUserRewordTone(userID, body.tone));
         break;
 
 
@@ -242,7 +252,7 @@ function getUser(userID) {
     // The frontend reads this straight after POST /new-user, and a missing user sends it back to set up again
     "ConsistentRead": true,
     "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
-    "ProjectionExpression": "Theme",
+    "ProjectionExpression": "Theme, RewordTone",
     "ExpressionAttributeValues": {
       ":cd420": { "S": userID },
       ":cd421": { "S": userID }
@@ -289,6 +299,24 @@ function updateUserTheme(userID, theme) {
     },
     "ExpressionAttributeNames": {
       "#9eb52": "Theme"
+    }
+  }
+}
+
+// No default is written for new users: a missing tone means the default in src/reword_tones.js
+function updateUserRewordTone(userID, tone) {
+  return {
+    "TableName": tableName,
+    "Key": {
+      "PK": { "S": userID },
+      "SK": { "S": userID }
+    },
+    "UpdateExpression": "SET #tone = :tone",
+    "ExpressionAttributeValues": {
+      ":tone": { "S": tone }
+    },
+    "ExpressionAttributeNames": {
+      "#tone": "RewordTone"
     }
   }
 }

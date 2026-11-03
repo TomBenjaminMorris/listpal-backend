@@ -282,6 +282,32 @@ test("GET /user reads consistently, as the frontend reads it straight after POST
   assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead, true);
 });
 
+test("GET /user returns the reword tone with the theme", async () => {
+  await request("GET /user");
+
+  assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression, "Theme, RewordTone");
+});
+
+test("POST /user-reword-tone saves the tone on the caller's user item", async () => {
+  mock.on(UpdateItemCommand).resolves({});
+
+  const response = await request("POST /user-reword-tone", { body: { tone: "playful" } });
+
+  assert.equal(response.statusCode, undefined);
+  const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
+  assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
+  assert.deepEqual(input.ExpressionAttributeValues, { ":tone": { S: "playful" } });
+  assert.deepEqual(input.ExpressionAttributeNames, { "#tone": "RewordTone" });
+});
+
+for (const [name, body] of [["no body", undefined], ["an unknown tone", { tone: "sarcastic" }], ["an inherited property name", { tone: "constructor" }], ["a tone that isn't a string", { tone: 3 }]]) {
+  test(`POST /user-reword-tone with ${name} is a 400 with nothing written`, async () => {
+    const response = await request("POST /user-reword-tone", { body });
+    assert.equal(response.statusCode, 400);
+    assert.equal(mock.commandCalls(UpdateItemCommand).length, 0);
+  });
+}
+
 test("POST /board-scores for another user's board is a 403 with nothing written", async () => {
   const response = await request("POST /board-scores", { body: { boardID: "b#theirs", scores: { YScore: 1, MScore: 1, WScore: 1 } } });
   assert.equal(response.statusCode, 403);

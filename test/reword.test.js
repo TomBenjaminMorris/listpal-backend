@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { mockClient } = require("aws-sdk-client-mock");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { DynamoDBClient, UpdateItemCommand, ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
+const { DEFAULT_REWORD_TONE, EXAMPLE_TASKS, REWORD_TONES } = require("../src/reword_tones");
 
 const ssmMock = mockClient(SSMClient);
 const dynamoMock = mockClient(DynamoDBClient);
@@ -79,6 +80,44 @@ test("sends the task as JSON data with the model, token cap and store off", asyn
   assert.deepEqual(JSON.parse(call.body.input), { task_lines: ["dentist thing"], category: "Health", board: "Life" });
   assert.match(call.body.safety_identifier, /^[0-9a-f]{64}$/);
   assert.doesNotMatch(call.body.safety_identifier, /user/);
+});
+
+test("sends the chosen tone's instructions", async () => {
+  for (const tone of Object.keys(REWORD_TONES)) {
+    await request({ text: "dentist thing", tone });
+  }
+  const sent = fetchCalls.map(call => call.body.instructions);
+  assert.equal(new Set(sent).size, 4);
+  assert.match(sent[1], /in as few words as possible/);
+  assert.match(sent[1], /\nCall the bank about the card\n/);
+  assert.match(sent[3], /At most one added emoji per line/);
+  assert.match(sent[3], /Brave a call to the bank about the card ☎️/);
+});
+
+for (const [name, tone] of [["no tone", undefined], ["an unknown tone", "sarcastic"], ["an inherited property name", "constructor"], ["a tone that isn't a string", 3]]) {
+  test(`${name} gets the default tone, not a 400`, async () => {
+    await request({ text: "dentist thing", tone: DEFAULT_REWORD_TONE });
+    const response = await request({ text: "dentist thing", tone });
+    assert.equal(response.data.text, "Book a dentist appointment");
+    assert.equal(fetchCalls[1].body.instructions, fetchCalls[0].body.instructions);
+  });
+}
+
+test("the default tone is casual", () => {
+  assert.equal(DEFAULT_REWORD_TONE, "casual");
+});
+
+test("every tone has a reply for each example task, one line per task line", () => {
+  for (const { examples } of Object.values(REWORD_TONES)) {
+    assert.deepEqual(examples.map(example => example.split("\n").length), EXAMPLE_TASKS.map(task => task.task_lines.length));
+  }
+});
+
+test("the retry keeps the tone", async () => {
+  fetchReply = call => jsonResponse(200, reply(call === 1 ? "Renew passport" : "Get the passport renewed"));
+  await request({ text: "renew passport", tone: "formal" });
+  assert.equal(fetchCalls[1].body.instructions, fetchCalls[0].body.instructions);
+  assert.match(fetchCalls[1].body.instructions, /work plan/);
 });
 
 test("reads the key once and decrypts it", async () => {

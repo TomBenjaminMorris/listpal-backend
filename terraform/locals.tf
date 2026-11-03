@@ -24,6 +24,10 @@ locals {
       route     = "POST /user-theme"
       protected = true
     },
+    user_reword_tone = {
+      route     = "POST /user-reword-tone"
+      protected = true
+    },
     delete_board = {
       route     = "POST /delete-board"
       protected = true
