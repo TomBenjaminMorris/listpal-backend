@@ -295,7 +295,7 @@ sequenceDiagram
 Each op is checked before it runs:
 
 - `opId`, `SK` (must start `t#`, or `b#` for a board op), `kind`, and `boardID` are required. A task op's `boardID` must be one of the user's boards. A board op's must equal its `SK`.
-- `fields` must be on an allow-list. Anything else, including `PK`, is rejected.
+- `fields` must be on an allow-list. Anything else, including `PK`, is rejected. `Description` must be at most 500 characters, the same limit as the reword route.
 
 Each op gets one status in `results`:
 
