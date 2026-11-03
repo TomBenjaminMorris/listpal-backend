@@ -94,13 +94,23 @@ test("sends the chosen tone's instructions", async () => {
   assert.match(sent[3], /Brave a call to the bank about the card ☎️/);
 });
 
-test("every tone but concise tells the model to keep the task's own emoji", async () => {
+test("every tone tells the model to keep the task's own emoji", async () => {
   for (const tone of Object.keys(REWORD_TONES)) {
     await request({ text: "dentist thing", tone });
   }
   const sent = fetchCalls.map(call => call.body.instructions);
-  assert.deepEqual(sent.map(instructions => /Keep any emoji the task has/.test(instructions)), [true, false, true, true]);
-  assert.match(sent[1], /No emoji unless the task has them/);
+  assert.ok(sent.every(instructions => /Keep any emoji the task has/.test(instructions)));
+  assert.ok(sent.every(instructions => !/No emoji unless/.test(instructions)));
+});
+
+test("playful's extra examples follow the shared ones, and no other tone gets them", async () => {
+  for (const tone of Object.keys(REWORD_TONES)) {
+    await request({ text: "dentist thing", tone });
+  }
+  const sent = fetchCalls.map(call => call.body.instructions);
+  assert.match(sent[3], /Hunt down some brushes first\n\n\{"task_lines":\["hoover stairs"\],"category":"Cleaning","board":"Home"\}\nTreat the stairs to a good hoover 🧹/);
+  assert.ok(sent[3].endsWith("Send the library books back home 📚"));
+  assert.ok(sent.slice(0, 3).every(instructions => !instructions.includes("hoover")));
 });
 
 for (const [name, tone] of [["no tone", undefined], ["an unknown tone", "sarcastic"], ["an inherited property name", "constructor"], ["a tone that isn't a string", 3]]) {
