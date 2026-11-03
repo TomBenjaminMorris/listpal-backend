@@ -291,16 +291,16 @@ test("GET /user returns the reword tone with the theme", async () => {
 test("POST /user-reword-tone saves the tone on the caller's user item", async () => {
   mock.on(UpdateItemCommand).resolves({});
 
-  const response = await request("POST /user-reword-tone", { body: { tone: "playful" } });
+  const response = await request("POST /user-reword-tone", { body: { tone: "formal" } });
 
   assert.equal(response.statusCode, undefined);
   const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
   assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
-  assert.deepEqual(input.ExpressionAttributeValues, { ":tone": { S: "playful" } });
+  assert.deepEqual(input.ExpressionAttributeValues, { ":tone": { S: "formal" } });
   assert.deepEqual(input.ExpressionAttributeNames, { "#tone": "RewordTone" });
 });
 
-for (const [name, body] of [["no body", undefined], ["an unknown tone", { tone: "sarcastic" }], ["an inherited property name", { tone: "constructor" }], ["a tone that isn't a string", { tone: 3 }]]) {
+for (const [name, body] of [["no body", undefined], ["an unknown tone", { tone: "sarcastic" }], ["the dropped playful tone", { tone: "playful" }], ["an inherited property name", { tone: "constructor" }], ["a tone that isn't a string", { tone: 3 }]]) {
   test(`POST /user-reword-tone with ${name} is a 400 with nothing written`, async () => {
     const response = await request("POST /user-reword-tone", { body });
     assert.equal(response.statusCode, 400);

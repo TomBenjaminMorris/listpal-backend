@@ -17,7 +17,9 @@ const EXAMPLE_TASKS = [
 ];
 
 // Each tone fills the same slots in the shared prompt in src/reword.js. Concise, with no style, is the prompt from
-// before tones apart from its emoji rule. Only concise keeps "never longer", and only playful may add flavour or an emoji.
+// before tones apart from its emoji rule. Only concise keeps "never longer".
+// A playful tone was tried and dropped on 3 Nov 2026, as gpt-5-nano at minimal reasoning invented words and added
+// details however the prompt was put. See "Tones" in ARCHITECTURE.md before bringing it back.
 const REWORD_TONES = {
   casual: {
     lines: "Start each line with a verb and say exactly what to do, in everyday words. A line may be a word or two longer if that reads more naturally, but never split a line into several.",
@@ -36,20 +38,6 @@ const REWORD_TONES = {
     style: "Sound like an item in a work plan: precise, professional words, with no slang or contractions. Never add courtesy phrases such as \"please\" or \"kindly\": it is still a to-do item, not a letter.",
     emoji: KEEP_EMOJI,
     examples: ["Contact the landlord by email", "Telephone the bank regarding the card", "Obtain plates, cups and forks for the party", "Paint the garden fence\nPurchase brushes beforehand"]
-  },
-  playful: {
-    lines: "Start each line with a verb and say exactly what to do, with a light, witty touch. A line may be a few words longer for flavour, but never split a line into several.",
-    // Flavour, never facts: the reword saves at once, so an invented detail would read as a different task. A list of
-    // fun verbs here was copied ("Conquer" on three of five tasks), and without it the wording came out garbled
-    // ("Cherish mum with a bouquet buy"), so it asks for plain wording over awkward fun, with more examples to copy from
-    style: "Add flavour through word choice, different for each task, using real, everyday words and correct grammar. If a fun wording doesn't read naturally, use a plain one. Never put a fun verb in front of the original words. Flavour sets the mood but never says what happens: \"gym\" may become \"Brave the gym\", never \"Go to the gym for leg day\". The line must still say plainly what to do.",
-    emoji: "Keep any emoji the task has, and add at most one more per line, at its end",
-    examples: ["Fire off an email to the landlord 📧", "Brave a call to the bank about the card ☎️", "Round up plates, cups and forks for the party 🎉", "Give the fence a fresh coat of paint 🎨\nHunt down some brushes first"],
-    extraExamples: [
-      [{ task_lines: ["hoover stairs"], category: "Cleaning", board: "Home" }, "Treat the stairs to a good hoover 🧹"],
-      [{ task_lines: ["reply to emails"], category: "Inbox", board: "Work" }, "Clear the decks and answer those emails 📬"],
-      [{ task_lines: ["return library books"], category: "Errands", board: "Town" }, "Send the library books back home 📚"]
-    ]
   }
 };
 
