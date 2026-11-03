@@ -87,11 +87,11 @@ test("sends the chosen tone's instructions", async () => {
     await request({ text: "dentist thing", tone });
   }
   const sent = fetchCalls.map(call => call.body.instructions);
-  assert.equal(new Set(sent).size, 4);
+  assert.equal(new Set(sent).size, 3);
   assert.match(sent[1], /in as few words as possible/);
   assert.match(sent[1], /\nCall the bank about the card\n/);
-  assert.match(sent[3], /add at most one more per line/);
-  assert.match(sent[3], /Brave a call to the bank about the card ☎️/);
+  assert.match(sent[2], /work plan/);
+  assert.match(sent[2], /\nTelephone the bank regarding the card\n/);
 });
 
 test("every tone tells the model to keep the task's own emoji", async () => {
@@ -103,17 +103,7 @@ test("every tone tells the model to keep the task's own emoji", async () => {
   assert.ok(sent.every(instructions => !/No emoji unless/.test(instructions)));
 });
 
-test("playful's extra examples follow the shared ones, and no other tone gets them", async () => {
-  for (const tone of Object.keys(REWORD_TONES)) {
-    await request({ text: "dentist thing", tone });
-  }
-  const sent = fetchCalls.map(call => call.body.instructions);
-  assert.match(sent[3], /Hunt down some brushes first\n\n\{"task_lines":\["hoover stairs"\],"category":"Cleaning","board":"Home"\}\nTreat the stairs to a good hoover 🧹/);
-  assert.ok(sent[3].endsWith("Send the library books back home 📚"));
-  assert.ok(sent.slice(0, 3).every(instructions => !instructions.includes("hoover")));
-});
-
-for (const [name, tone] of [["no tone", undefined], ["an unknown tone", "sarcastic"], ["an inherited property name", "constructor"], ["a tone that isn't a string", 3]]) {
+for (const [name, tone] of [["no tone", undefined], ["an unknown tone", "sarcastic"], ["an inherited property name", "constructor"], ["a tone that isn't a string", 3], ["the dropped playful tone", "playful"]]) {
   test(`${name} gets the default tone, not a 400`, async () => {
     await request({ text: "dentist thing", tone: DEFAULT_REWORD_TONE });
     const response = await request({ text: "dentist thing", tone });
