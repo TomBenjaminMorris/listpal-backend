@@ -90,8 +90,17 @@ test("sends the chosen tone's instructions", async () => {
   assert.equal(new Set(sent).size, 4);
   assert.match(sent[1], /in as few words as possible/);
   assert.match(sent[1], /\nCall the bank about the card\n/);
-  assert.match(sent[3], /At most one added emoji per line/);
+  assert.match(sent[3], /add at most one more per line/);
   assert.match(sent[3], /Brave a call to the bank about the card ☎️/);
+});
+
+test("every tone but concise tells the model to keep the task's own emoji", async () => {
+  for (const tone of Object.keys(REWORD_TONES)) {
+    await request({ text: "dentist thing", tone });
+  }
+  const sent = fetchCalls.map(call => call.body.instructions);
+  assert.deepEqual(sent.map(instructions => /Keep any emoji the task has/.test(instructions)), [true, false, true, true]);
+  assert.match(sent[1], /No emoji unless the task has them/);
 });
 
 for (const [name, tone] of [["no tone", undefined], ["an unknown tone", "sarcastic"], ["an inherited property name", "constructor"], ["a tone that isn't a string", 3]]) {

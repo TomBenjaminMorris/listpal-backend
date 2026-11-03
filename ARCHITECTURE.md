@@ -403,10 +403,12 @@ sequenceDiagram
 
   | Tone | Length | Style | Emoji |
   | --- | --- | --- | --- |
-  | `casual` (default) | A word or two longer if it reads more naturally | Everyday words and contractions, no added colour, as the default should stay plain | None unless the task has them |
+  | `casual` (default) | A word or two longer if it reads more naturally | Everyday words and contractions, no added colour, as the default should stay plain | Keeps the task's own, adds none |
   | `concise` | Never longer just to change the wording | None: the prompt as it was before tones, word for word | None unless the task has them |
-  | `formal` | A few words longer | Precise and professional, no slang, contractions or "please" | None unless the task has them |
-  | `playful` | A few words longer, for flavour | A colourful verb or a few fun words, never a changed action or added facts, as the reword saves at once | At most one added per line, at its end |
+  | `formal` | A few words longer | Precise and professional, no slang, contractions or "please" | Keeps the task's own, adds none |
+  | `playful` | A few words longer, for flavour | Flavour through word choice, different for each task, never a changed action or added facts, as the reword saves at once | Keeps the task's own, adds at most one per line, at its end |
+
+  A live run on 3 November 2026 (20 rewords) found three faults, since fixed. Playful copied "conquer" from a list of example verbs in its rule, so the rule now names none. Playful added a detail ("dentist" became "Visit the dentist for a check-up"), so the rule now gives a counter-example. Formal dropped a task's own emoji, which concise's older rule ("no emoji unless the task has them") allows.
 
   Every tone keeps "start with a verb" and "add no facts". The length cap below applies to every tone, so a longer tone on a very short task can still be refused.
 - **One retry for an unchanged reply.** At minimal reasoning the model sometimes only recapitalises a task. When the reply has the same words as the original, ignoring capitals and punctuation, the same conversation is sent again with a request for different words. If that fails, the first reply is used. It still counts as one reword. Raising the effort to `low` instead was tried on 2 November 2026: its reasoning used up the 300-token cap on a third of tasks, which then failed, and it was slower.
