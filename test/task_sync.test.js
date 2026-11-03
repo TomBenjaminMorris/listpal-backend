@@ -187,6 +187,17 @@ test("fields outside the allow-list are rejected", async () => {
   assert.equal(inputs(mock, PutItemCommand).length, 0);
 });
 
+test("a task description over 500 characters is rejected, and exactly 500 is accepted", async () => {
+  const { client, mock } = setup();
+  const result = await sync(client, [
+    op("create", { Description: "a".repeat(501) }, { opId: "t#1:1" }),
+    op("create", { Description: "a".repeat(500) }, { opId: "t#1:2" })
+  ]);
+
+  assert.deepEqual(result.results.map(r => r.status), ["rejected", "applied"]);
+  assert.equal(inputs(mock, PutItemCommand).length, 1);
+});
+
 test("a transient DynamoDB error asks the client to retry and does not stop the batch", async () => {
   const { client, mock } = setup();
   mock.on(PutItemCommand)

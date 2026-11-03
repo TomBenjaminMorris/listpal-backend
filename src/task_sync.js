@@ -10,6 +10,8 @@ const NIL = "nil";
 const KINDS = ["create", "update", "delete"];
 const STRING_FIELDS = ["Description", "Category", "Emoji", "Important", "Link", "CompletedDate", "ExpiryDate", "GSI1-SK", "CreatedDate"];
 const NUMBER_FIELDS = ["ExpiryDateTTL"];
+// Matches the reword route and the client, so a task can always be reworded
+const MAX_DESCRIPTION_LENGTH = 500;
 // GSI key attributes cannot hold an empty string, so DynamoDB would reject the write on every retry.
 const NON_EMPTY_FIELDS = ["GSI1-SK"];
 const isTarget = value => Number.isInteger(value) && value >= 1;
@@ -43,6 +45,7 @@ function opProblem(op, boards) {
   for (const [name, value] of Object.entries(fields)) {
     if (STRING_FIELDS.includes(name) && typeof value === "string") {
       if (NON_EMPTY_FIELDS.includes(name) && value === "") return `empty field ${name}`;
+      if (name === "Description" && value.length > MAX_DESCRIPTION_LENGTH) return `field ${name} too long`;
       continue;
     }
     if (NUMBER_FIELDS.includes(name) && Number.isFinite(value)) continue;
