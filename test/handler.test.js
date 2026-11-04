@@ -184,6 +184,10 @@ test("POST /delete-account succeeds when an earlier attempt already deleted the 
   assert.deepEqual(response, { data: { deleted: true } });
 });
 
+// Resolves an update's placeholders, so a test reads which attributes it sets to what
+const setFields = input => Object.fromEntries(Object.entries(input.ExpressionAttributeNames)
+  .map(([name, attribute]) => [attribute, input.ExpressionAttributeValues[`:${name.slice(1)}`]]));
+
 const newUserItems = () => mock.commandCalls(TransactWriteItemsCommand)[0].args[0].input.TransactItems.map(item => item.Put);
 
 test("POST /new-user stores no email or name", async () => {
@@ -296,8 +300,7 @@ test("POST /user-reword-tone saves the tone on the caller's user item", async ()
   assert.equal(response.statusCode, undefined);
   const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
   assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
-  assert.deepEqual(input.ExpressionAttributeValues, { ":tone": { S: "formal" } });
-  assert.deepEqual(input.ExpressionAttributeNames, { "#tone": "RewordTone" });
+  assert.deepEqual(setFields(input), { RewordTone: { S: "formal" } });
 });
 
 for (const [name, body] of [["no body", undefined], ["an unknown tone", { tone: "sarcastic" }], ["the dropped playful tone", { tone: "playful" }], ["an inherited property name", { tone: "constructor" }], ["a tone that isn't a string", { tone: 3 }]]) {
@@ -315,9 +318,26 @@ test("POST /board-scores for another user's board is a 403 with nothing written"
 });
 
 test("POST /board-scores for the user's own board writes the scores", async () => {
-  const response = await request("POST /board-scores", { body: { boardID: "b#mine", scores: { YScore: 1, MScore: 1, WScore: 1 } } });
+  const response = await request("POST /board-scores", { body: { boardID: "b#mine", scores: { YScore: 3, MScore: "2", WScore: 1 } } });
   assert.equal(response.statusCode, undefined);
-  assert.equal(mock.commandCalls(UpdateItemCommand).length, 1);
+  const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
+  assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "b#mine" } });
+  assert.deepEqual(setFields(input), { YScore: { N: "3" }, MScore: { N: "2" }, WScore: { N: "1" } });
+});
+
+test("POST /user-theme saves the theme on the caller's user item", async () => {
+  await request("POST /user-theme", { body: { theme: "nord" } });
+  const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
+  assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
+  assert.deepEqual(setFields(input), { Theme: { S: "nord" } });
+});
+
+test("GET /boards returns the caller's boards, unmarshalled", async () => {
+  const response = await request("GET /boards");
+  assert.deepEqual(response, { data: [{ SK: "b#mine" }] });
+  const { input } = mock.commandCalls(QueryCommand)[0].args[0];
+  assert.deepEqual(input.ExpressionAttributeValues, { ":pk": { S: "u#user" }, ":board": { S: "b#" } });
+  assert.equal(input.ConsistentRead, true);
 });
 
 test("POST /board-scores with a negative score is a 400", async () => {

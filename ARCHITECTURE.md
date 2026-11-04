@@ -37,6 +37,7 @@ listpal-backend/
 │   ├── welcome_board.js       The example board and tasks a new user starts with
 │   ├── reword.js              Reword Lambda: POST /reword-task, calls OpenAI
 │   ├── reword_tones.js        The reword tones and their prompt wording, also used to check POST /user-reword-tone
+│   ├── respond.js             The error response shape both HTTP Lambdas return
 │   ├── package.json / yarn.lock
 │   └── .tool-versions         nodejs 20.0.0
 ├── src.zip                    Build artefact written by Terraform (gitignored)
@@ -116,7 +117,7 @@ flowchart LR
 3. API Gateway's JWT authoriser checks the token against the user pool and client ID. Every route has this authoriser.
 4. API Gateway invokes the single API Lambda with payload format 2.0. The Lambda switches on `event.routeKey`.
 5. For protected routes the Lambda runs `jwtDecode` on the same header (decode only, no signature check, because the gateway has already verified it) and builds `userID = "u#" + sub`. All data access is scoped by this ID.
-6. The Lambda returns `{ data: ... }` on success, which API Gateway sends as a 200. Errors go through a `respond(statusCode, payload)` helper: validation failures are 400, ownership failures 403, and anything caught by the top-level `catch` is 500.
+6. The Lambda returns `{ data: ... }` on success, which API Gateway sends as a 200. Errors go through a `respond(statusCode, payload)` helper in `src/respond.js`, shared with the reword Lambda: validation failures are 400, ownership failures 403, and anything caught by the top-level `catch` is 500.
 
 ### New user flow
 
@@ -643,7 +644,7 @@ These are things a reader should know before changing the system. They are not f
 | I want to... | Go to |
 | --- | --- |
 | Add or change an API route | `terraform/locals.tf` (`lambda_routes`) and a `case` in `src/handler.js`. A route on its own Lambda instead names it with a `lambda` key, listed in `route_lambdas` |
-| Change DynamoDB queries or item shapes | Query builder functions at the bottom of `src/handler.js` |
+| Change DynamoDB queries or item shapes | Query and item builder functions below the handler in `src/handler.js` (`taskItem`, `boardItem`, `userItem`, `updateFields`) |
 | Change throttling, CORS or authoriser | `terraform/apigateway.tf` |
 | Change Lambda runtime, memory or permissions | `terraform/lambda.tf`, `cronjob.tf` |
 | Change the reword prompt, model, daily quotas or limits | `src/reword.js`, and the route throttle in `terraform/locals.tf` |

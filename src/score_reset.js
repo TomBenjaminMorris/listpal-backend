@@ -1,89 +1,44 @@
 "use strict";
 const { DynamoDBClient, QueryCommand, UpdateItemCommand } = require("@aws-sdk/client-dynamodb");
+const { marshall } = require("@aws-sdk/util-dynamodb");
 const client = new DynamoDBClient();
-const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const tableName = "ListPal-" + process.env.Env;
 
+// Matched against the cron rule names in terraform/cronjob.tf
+const RULE_FIELDS = { weekly: "WScore", monthly: "MScore", yearly: "YScore" };
+
 module.exports.handler = async (event) => {
+  const rule = event.resources?.[0] ?? "";
+  const field = Object.entries(RULE_FIELDS).find(([name]) => rule.includes(name))?.[1];
+  // EventBridge ignores the return value, so without these logs a failed reset leaves no trace
+  if (!field) {
+    console.error("Score reset failed: no score field for rule", rule);
+    return;
+  }
+
   try {
-    let frequency = '';
-    if (event.resources[0]) {
-      if (event.resources[0].includes("weekly")) {
-        frequency = "WScore";
-      } else if (event.resources[0].includes("monthly")) {
-        frequency = "MScore";
-      } else if (event.resources[0].includes("yearly")) {
-        frequency = "YScore";
-      }
+    const { Items = [] } = await client.send(new QueryCommand({
+      TableName: tableName,
+      IndexName: "GSI1",
+      KeyConditionExpression: "#pk = :board And begins_with(#sk, :board)",
+      ProjectionExpression: "PK, SK",
+      ExpressionAttributeNames: { "#pk": "GSI1-PK", "#sk": "GSI1-SK" },
+      ExpressionAttributeValues: marshall({ ":board": "b#" })
+    }));
+
+    const result = [];
+    for (const { PK, SK } of Items) {
+      result.push(await client.send(new UpdateItemCommand({
+        TableName: tableName,
+        Key: { PK, SK },
+        UpdateExpression: "SET #score = :zero",
+        ExpressionAttributeNames: { "#score": field },
+        ExpressionAttributeValues: marshall({ ":zero": 0 })
+      })));
     }
-
-    const allBoards = await query(allBoardsQuery());
-    const data = allBoards && allBoards.Items.map((item) => {
-      return unmarshall(item);
-    });
-
-    let result = []
-    try {
-      for (const board of data) {
-        const writeResult = await update(updateBoardScores(board.PK, board.SK, frequency));
-        result.push(writeResult)
-      }
-      return result
-    } catch (e) {
-      // EventBridge ignores the return value, so without this a failed reset leaves no trace
-      console.error("Score reset failed:", e);
-      return "Batch update failed: " + e;
-    }
-
+    return result;
   } catch (error) {
-    console.log(error);
+    console.error("Score reset failed:", error);
+    return "Batch update failed: " + error;
   }
-}
-
-async function query(input) {
-  const command = new QueryCommand(input);
-  const result = await client.send(command);
-  return result
-}
-
-async function update(input) {
-  const command = new UpdateItemCommand(input);
-  const result = await client.send(command);
-  return result
-}
-
-function allBoardsQuery() {
-  return {
-    "TableName": tableName,
-    "IndexName": "GSI1",
-    "ScanIndexForward": true,
-    "ConsistentRead": false,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "PK, SK",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": "b#" },
-      ":cd421": { "S": "b#" }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "GSI1-PK",
-      "#cd421": "GSI1-SK"
-    }
-  }
-}
-
-function updateBoardScores(userID, boardID, frequency) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb52": { "N": "0" }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb52": frequency
-    }
-  }
-}
+};

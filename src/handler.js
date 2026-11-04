@@ -1,157 +1,102 @@
 "use strict";
 const { DynamoDBClient, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, TransactWriteItemsCommand } = require("@aws-sdk/client-dynamodb");
-const { unmarshall } = require("@aws-sdk/util-dynamodb");
+const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
 const { jwtDecode } = require("jwt-decode");
-const { syncTasks, validateSyncBody, ValidationError } = require("./task_sync");
+const { syncTasks, validateSyncBody, ValidationError, isConditionFailure } = require("./task_sync");
 const { welcomeBoard } = require("./welcome_board");
 const { REWORD_TONES } = require("./reword_tones");
+const { respond } = require("./respond");
 const client = new DynamoDBClient();
 const tableName = "ListPal-" + process.env.Env;
 
-// A plain object return is sent by API Gateway as a 200, so errors need the explicit response shape.
-function respond(statusCode, payload) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  };
-}
+const notYourBoard = () => respond(403, { error: "Requested board does not belong to the currently logged-in user" });
 
 module.exports.handler = async (event) => {
   try {
-    let readResult, writeResult;
     const params = event.queryStringParameters;
-    const body = event.body && JSON.parse(event['body']);
-    let userID = "";
-    if (event.headers.authorization) {
-      const token = event.headers.authorization;
-      const decoded = jwtDecode(token);
-      userID = `u#${decoded.sub}`;
-    }
-    let valid = false
+    const body = event.body && JSON.parse(event.body);
+    const token = event.headers.authorization;
+    const userID = token ? `u#${jwtDecode(token).sub}` : "";
 
     switch (event.routeKey) {
-      //// GET ACTIVE TASKS ////
-      case "GET /active-tasks":
+      case "GET /active-tasks": {
         if (typeof params?.boardID !== "string") {
           return respond(400, { error: "boardID is required" });
         }
         // A board's owner never changes, so the task read can run alongside the check and be discarded on failure.
         // Only board IDs start it: "u#" and "b#" are GSI1 partitions holding every user's items.
-        [valid, readResult] = await Promise.all([
+        const [valid, tasks] = await Promise.all([
           verifyBoard(userID, params.boardID),
-          isBoardID(params.boardID) ? query(activeTasksQuery(params.boardID)) : undefined
+          isBoardID(params.boardID) ? queryItems(activeTasksQuery(params.boardID)) : undefined
         ]);
-        if (!valid) {
-          return respond(403, { error: "requested board does not belong to the currently logged in user" });
-        }
-        break;
+        if (!valid) return notYourBoard();
+        return { data: tasks };
+      }
 
-
-      //// GET BOARDS ////
       case "GET /boards":
-        readResult = await query(boardsPerUserQuery(userID));
-        break;
+        return { data: await queryItems(boardsQuery(userID)) };
 
-
-      //// GET USER ////
       case "GET /user":
-        readResult = await query(getUser(userID));
-        break;
+        return { data: await queryItems(userQuery(userID)) };
 
-
-      //// ADD USER ////
       case "POST /new-user":
-        writeResult = await createNewUser(userID);
-        break;
+        return { data: await createNewUser(userID) };
 
-
-      //// UPDATE USER THEME ////
       case "POST /user-theme":
-        writeResult = await update(updateUserTheme(userID, body.theme));
-        break;
+        return { data: await setUserField(userID, "Theme", body.theme) };
 
-
-      //// UPDATE USER REWORD TONE ////
+      // No default is written for new users: a missing tone means the default in src/reword_tones.js
       case "POST /user-reword-tone":
         if (!Object.hasOwn(REWORD_TONES, body?.tone)) {
           return respond(400, { error: `tone must be one of ${Object.keys(REWORD_TONES).join(", ")}` });
         }
-        writeResult = await update(updateUserRewordTone(userID, body.tone));
-        break;
+        return { data: await setUserField(userID, "RewordTone", body.tone) };
 
-
-      //// SYNC TASK AND BOARD SETTINGS CHANGES ////
+      // Task and board settings changes
       case "POST /sync":
         try {
-          writeResult = await syncTasks(client, tableName, userID, validateSyncBody(body));
+          return { data: await syncTasks(client, tableName, userID, validateSyncBody(body)) };
         } catch (error) {
           if (error instanceof ValidationError) {
             return respond(400, { error: error.message });
           }
           throw error;
         }
-        break;
 
-
-      //// DELETE BOARD ////
       case "POST /delete-board":
-        valid = await verifyBoard(userID, body.boardID);
-        if (!valid) {
-          return respond(403, { error: "Requested board does not belong to the currently logged-in user" });
-        }
-
+        if (!(await verifyBoard(userID, body.boardID))) return notYourBoard();
         try {
           await deleteBoardTasks(userID, body.boardID);
-          const boardDeletionResult = await remove(deleteBoard(userID, body.boardID));
-          return boardDeletionResult;
+          return await client.send(new DeleteItemCommand({ TableName: tableName, Key: itemKey(userID, body.boardID) }));
         } catch (error) {
           console.error("Failed to delete board or tasks:", error);
           return respond(500, { error: "Failed to delete board and/or tasks", details: error.message });
         }
 
-
-      //// DELETE ACCOUNT ////
       // Data before login: a failure partway leaves the login in place, so the user can sign in and try again.
       case "POST /delete-account":
         await deleteUserItems(userID);
         await deleteCognitoUser(userID.slice(2));
-        writeResult = { deleted: true };
-        break;
+        return { data: { deleted: true } };
 
-
-      //// UPDATE BOARD SCORES ////
       // Manual score edits only. Ticking a task changes scores inside POST /sync.
-      case "POST /board-scores":
+      case "POST /board-scores": {
         const scores = body?.scores;
         if (!scores || !["YScore", "MScore", "WScore"].every(field => Number.isFinite(Number(scores[field])) && Number(scores[field]) >= 0)) {
           return respond(400, { error: "scores must contain non-negative YScore, MScore and WScore" });
         }
-        valid = await verifyBoard(userID, body.boardID);
-        if (!valid) {
-          return respond(403, { error: "Requested board does not belong to the currently logged-in user" });
-        }
-        writeResult = await update(updateBoardScores(userID, body.boardID, scores));
-        break;
-
+        if (!(await verifyBoard(userID, body.boardID))) return notYourBoard();
+        return { data: await setBoardScores(userID, body.boardID, scores) };
+      }
 
       default:
         throw new Error(`Unsupported route: "${event.routeKey}"`);
     }
-
-    const data = readResult && readResult.Items.map((item) => {
-      return unmarshall(item);
-    });
-
-    return {
-      data: data ? data : writeResult
-    }
-
   } catch (error) {
     console.error(error);
     return respond(500, { error: "Internal server error" });
   }
-}
+};
 
 
 // The user item and tasks share the user's partition with their boards, so the prefix stops them passing as boards
@@ -159,11 +104,13 @@ function isBoardID(boardID) {
   return typeof boardID === "string" && boardID.startsWith("b#") && boardID.length > 2;
 }
 
+const itemKey = (PK, SK) => marshall({ PK, SK });
+
 async function verifyBoard(userID, boardID) {
   if (!isBoardID(boardID)) return false;
   const result = await client.send(new GetItemCommand({
     TableName: tableName,
-    Key: { PK: { S: userID }, SK: { S: boardID } },
+    Key: itemKey(userID, boardID),
     ProjectionExpression: "SK",
     // The frontend can open or delete a board moments after creating it
     ConsistentRead: true
@@ -177,180 +124,129 @@ async function createNewUser(userID) {
     await client.send(new TransactWriteItemsCommand({
       TransactItems: [
         // Only the user item is guarded: it exists once setup has run, so a user who deleted the welcome board doesn't get it back
-        { Put: { ...addUser({ userID }), ConditionExpression: "attribute_not_exists(SK)" } },
-        { Put: addBoard(userID, board) },
-        ...tasks.map(task => ({ Put: addTask(userID, task) }))
+        { Put: { ...putItem(userItem(userID)), ConditionExpression: "attribute_not_exists(SK)" } },
+        { Put: putItem(boardItem(userID, board)) },
+        ...tasks.map(task => ({ Put: putItem(taskItem(userID, task)) }))
       ]
     }));
     return { created: true };
   } catch (error) {
-    const alreadySetUp = error.name === "TransactionCanceledException" &&
-      (error.CancellationReasons ?? []).some(reason => reason.Code === "ConditionalCheckFailed");
-    if (alreadySetUp) return { created: false };
+    if (isConditionFailure(error)) return { created: false };
     throw error;
   }
 }
 
-async function query(input) {
-  const command = new QueryCommand(input);
-  const result = await client.send(command);
-  return result
+function query(input) {
+  return client.send(new QueryCommand(input));
 }
 
-async function update(input) {
-  const command = new UpdateItemCommand(input);
-  const result = await client.send(command);
-  return result
-}
-
-async function remove(input) {
-  const command = new DeleteItemCommand(input);
-  const result = await client.send(command);
-  return result
+async function queryItems(input) {
+  const result = await query(input);
+  return result.Items.map(item => unmarshall(item));
 }
 
 function activeTasksQuery(boardID) {
   return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
-    "IndexName": "GSI1",
-    "KeyConditionExpression": "#c1490 = :c1490 And #c1491 >= :c1491",
-    "ExpressionAttributeValues": {
-      ":c1490": { "S": boardID },
-      ":c1491": { "S": String(Date.now()) }
-    },
-    "ExpressionAttributeNames": {
-      "#c1490": "GSI1-PK",
-      "#c1491": "GSI1-SK"
-    }
-  }
+    TableName: tableName,
+    IndexName: "GSI1",
+    KeyConditionExpression: "#pk = :pk And #sk >= :now",
+    ExpressionAttributeNames: { "#pk": "GSI1-PK", "#sk": "GSI1-SK" },
+    ExpressionAttributeValues: marshall({ ":pk": boardID, ":now": String(Date.now()) })
+  };
 }
 
-function boardsPerUserQuery(userID) {
+function boardsQuery(userID) {
   return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
+    TableName: tableName,
     // Scores are read straight after a sync on page load, so an eventually consistent read can miss the tick
-    "ConsistentRead": true,
-    "KeyConditionExpression": "#cd420 = :cd420 And begins_with(#cd421, :cd421)",
-    "ProjectionExpression": "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji, CategoryOrder",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": "b#" }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
+    ConsistentRead: true,
+    KeyConditionExpression: "PK = :pk And begins_with(SK, :board)",
+    ProjectionExpression: "SK, Board, WScore, MScore, YScore, YTarget, MTarget, WTarget, Emoji, CategoryOrder",
+    ExpressionAttributeValues: marshall({ ":pk": userID, ":board": "b#" })
+  };
 }
 
-function getUser(userID) {
+function userQuery(userID) {
   return {
-    "TableName": tableName,
-    "ScanIndexForward": true,
+    TableName: tableName,
     // The frontend reads this straight after POST /new-user, and a missing user sends it back to set up again
-    "ConsistentRead": true,
-    "KeyConditionExpression": "#cd420 = :cd420 And #cd421 = :cd421",
-    "ProjectionExpression": "Theme, RewordTone",
-    "ExpressionAttributeValues": {
-      ":cd420": { "S": userID },
-      ":cd421": { "S": userID }
-    },
-    "ExpressionAttributeNames": {
-      "#cd420": "PK",
-      "#cd421": "SK"
-    }
-  }
+    ConsistentRead: true,
+    KeyConditionExpression: "PK = :pk And SK = :pk",
+    ProjectionExpression: "Theme, RewordTone",
+    ExpressionAttributeValues: marshall({ ":pk": userID })
+  };
 }
 
-function addTask(userID, body) {
-  return {
-    "Item": {
-      "CreatedDate": { "S": body.createdDate },
-      "GSI1-SK": { "S": body.expiryDate },
-      "SK": { "S": body.taskID },
-      "ExpiryDate": { "S": body.expiryDate },
-      "ExpiryDateTTL": { "N": String(body.expiryDateTTL) },
-      "GSI1-PK": { "S": body.boardID },
-      "Description": { "S": body.description },
-      "PK": { "S": userID },
-      "CompletedDate": { "S": body.completedDate },
-      "Category": { "S": body.category },
-      "EntityType": { "S": "Task" },
-      "Emoji": { "S": body.emoji },
-      "Important": { "S": body.important },
-      "Link": { "S": body.link },
-    },
-    "TableName": tableName
-  }
+function putItem(item) {
+  return { TableName: tableName, Item: marshall(item) };
 }
 
-function updateUserTheme(userID, theme) {
+function userItem(userID) {
   return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": userID }
-    },
-    "UpdateExpression": "SET #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb52": { "S": theme }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb52": "Theme"
-    }
-  }
+    PK: userID,
+    SK: userID,
+    EntityType: "User",
+    "GSI1-PK": "u#",
+    "GSI1-SK": userID,
+    Theme: "purple-haze"
+  };
 }
 
-// No default is written for new users: a missing tone means the default in src/reword_tones.js
-function updateUserRewordTone(userID, tone) {
+function boardItem(userID, board) {
   return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": userID }
-    },
-    "UpdateExpression": "SET #tone = :tone",
-    "ExpressionAttributeValues": {
-      ":tone": { "S": tone }
-    },
-    "ExpressionAttributeNames": {
-      "#tone": "RewordTone"
-    }
-  }
+    PK: userID,
+    SK: board.boardID,
+    EntityType: "Board",
+    "GSI1-PK": "b#",
+    "GSI1-SK": board.boardID,
+    Board: board.boardName,
+    WScore: board.score,
+    MScore: board.score,
+    YScore: board.score,
+    WTarget: board.weeklyTarget,
+    MTarget: 31,
+    YTarget: 365,
+    Emoji: board.emoji,
+    CategoryOrder: board.categoryOrder
+  };
 }
 
-function addBoard(userID, body) {
+function taskItem(userID, task) {
   return {
-    "Item": {
-      "SK": { "S": body.boardID },
-      "PK": { "S": userID },
-      "Board": { "S": body.boardName },
-      "EntityType": { "S": "Board" },
-      "WScore": { "N": String(body.score) },
-      "MScore": { "N": String(body.score) },
-      "YScore": { "N": String(body.score) },
-      "WTarget": { "N": String(body.weeklyTarget) },
-      "MTarget": { "N": String(31) },
-      "YTarget": { "N": String(365) },
-      "GSI1-SK": { "S": body.boardID },
-      "GSI1-PK": { "S": "b#" },
-      "Emoji": { "S": body.emoji },
-      "CategoryOrder": { "S": body.categoryOrder },
-    },
-    "TableName": tableName
-  }
+    PK: userID,
+    SK: task.taskID,
+    EntityType: "Task",
+    "GSI1-PK": task.boardID,
+    "GSI1-SK": task.expiryDate,
+    CreatedDate: task.createdDate,
+    Description: task.description,
+    Category: task.category,
+    Emoji: task.emoji,
+    Important: task.important,
+    Link: task.link,
+    CompletedDate: task.completedDate,
+    ExpiryDate: task.expiryDate,
+    ExpiryDateTTL: task.expiryDateTTL
+  };
 }
 
-function deleteBoard(userID, boardID) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    }
-  }
+function updateFields(PK, SK, fields) {
+  const names = Object.keys(fields);
+  return client.send(new UpdateItemCommand({
+    TableName: tableName,
+    Key: itemKey(PK, SK),
+    UpdateExpression: "SET " + names.map((_, i) => `#f${i} = :f${i}`).join(", "),
+    ExpressionAttributeNames: Object.fromEntries(names.map((name, i) => [`#f${i}`, name])),
+    ExpressionAttributeValues: marshall(Object.fromEntries(names.map((name, i) => [`:f${i}`, fields[name]])))
+  }));
+}
+
+function setUserField(userID, name, value) {
+  return updateFields(userID, userID, { [name]: value });
+}
+
+function setBoardScores(userID, boardID, { YScore, MScore, WScore }) {
+  return updateFields(userID, boardID, { YScore: Number(YScore), MScore: Number(MScore), WScore: Number(WScore) });
 }
 
 // Every task on the board, expired ones included, a page at a time; batches of 25 are BatchWriteItem's limit.
@@ -411,40 +307,4 @@ async function batchDelete(keys) {
     requests = result.UnprocessedItems?.[tableName] ?? [];
   }
   if (requests.length) throw new Error(`${requests.length} items could not be deleted`);
-}
-
-
-function updateBoardScores(userID, boardID, scores) {
-  return {
-    "TableName": tableName,
-    "Key": {
-      "PK": { "S": userID },
-      "SK": { "S": boardID }
-    },
-    "UpdateExpression": "SET #9eb50 = :9eb50, #9eb51 = :9eb51, #9eb52 = :9eb52",
-    "ExpressionAttributeValues": {
-      ":9eb50": { "N": String(scores.YScore) },
-      ":9eb51": { "N": String(scores.MScore) },
-      ":9eb52": { "N": String(scores.WScore) }
-    },
-    "ExpressionAttributeNames": {
-      "#9eb50": "YScore",
-      "#9eb51": "MScore",
-      "#9eb52": "WScore"
-    }
-  }
-}
-
-function addUser(body) {
-  return {
-    "Item": {
-      "SK": { "S": body.userID },
-      "PK": { "S": body.userID },
-      "EntityType": { "S": "User" },
-      "GSI1-SK": { "S": body.userID },
-      "GSI1-PK": { "S": "u#" },
-      "Theme": { "S": "purple-haze" },
-    },
-    "TableName": tableName
-  }
 }
