@@ -4,6 +4,7 @@ const { DynamoDBClient, UpdateItemCommand } = require("@aws-sdk/client-dynamodb"
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { jwtDecode } = require("jwt-decode");
 const { DEFAULT_REWORD_TONE, EXAMPLE_TASKS, REWORD_TONES } = require("./reword_tones");
+const { respond } = require("./respond");
 const dynamo = new DynamoDBClient();
 const ssm = new SSMClient();
 const tableName = "ListPal-" + process.env.Env;
@@ -61,14 +62,6 @@ class QuotaError extends Error {
     super(code);
     this.code = code;
   }
-}
-
-function respond(statusCode, payload) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  };
 }
 
 function validateRewordBody(body) {

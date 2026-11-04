@@ -213,15 +213,7 @@ async function updateTask(ctx, op) {
 
   // Only a completion change moves scores and so needs the current task; anything else is a single write
   // whose condition stops a deleted task coming back as a partial item
-  if (!("CompletedDate" in fields)) {
-    try {
-      await ctx.client.send(new UpdateItemCommand(itemUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
-      return "applied";
-    } catch (error) {
-      if (error.name === "ConditionalCheckFailedException") return "gone";
-      throw error;
-    }
-  }
+  if (!("CompletedDate" in fields)) return updateExisting(ctx, op.SK, fields);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     // Without this read an UpdateItem on a deleted task would recreate it as a partial item.
@@ -302,9 +294,13 @@ async function updateBoard(ctx, op) {
   if (!ctx.boards.has(op.SK)) return "gone";
   const fields = op.fields ?? {};
   if (!Object.keys(fields).length) return "applied";
+  // The condition stops an edit that lands after a delete from coming back as a ghost board
+  return updateExisting(ctx, op.SK, fields);
+}
+
+async function updateExisting(ctx, SK, fields) {
   try {
-    // The condition stops an edit that lands after a delete from coming back as a ghost board
-    await ctx.client.send(new UpdateItemCommand(itemUpdate(ctx, op.SK, fields, undefined, { checkCompletion: false })));
+    await ctx.client.send(new UpdateItemCommand(itemUpdate(ctx, SK, fields, undefined, { checkCompletion: false })));
     return "applied";
   } catch (error) {
     if (error.name === "ConditionalCheckFailedException") return "gone";
@@ -434,4 +430,4 @@ async function runLimited(items, limit, work) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
 }
 
-module.exports = { syncTasks, validateSyncBody, ValidationError, MAX_OPS };
+module.exports = { syncTasks, validateSyncBody, ValidationError, isConditionFailure, MAX_OPS };
