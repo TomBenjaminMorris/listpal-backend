@@ -57,7 +57,7 @@ listpal-backend/
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
 ├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock)
-├── test-data/                 Manual DynamoDB export and import scripts, a one-off to strip old Email and Name attributes, plus export files
+├── test-data/                 Backup and restore scripts and their tests (section 9), the seed importer, a one-off to strip old Email and Name attributes, plus old export files
 └── bak/                       Old code kept for reference (gitignored, ignore it)
 ```
 
@@ -526,6 +526,7 @@ Key points:
 - **Logging:** Lambda and API access log groups keep logs for one day only.
 - **Error alarms:** each Lambda's log group has a metric filter counting lines that contain `ERROR`, `Task timed out` or `Runtime exited`, published to the `ListPal` namespace. Lambda's own `Errors` metric isn't used, because the handlers catch their errors and return a 500 or 502, so it would only see timeouts and crashes. An alarm per function fires when its count reaches 1 in a 5-minute period and emails `alert_email` through the SNS topic. It clears after a quiet period, so each burst of errors sends one email. `console.warn` lines (such as moderation refusals and a failed reword retry, where the user still gets a reply) don't count. The logs are kept for one day, so check them soon after an alert.
 - **Cost budget:** `Monthly cost` is a $2 monthly budget covering the whole AWS account, not only ListPal. It emails `alert_email` directly (not through SNS) when the forecast passes 50% ($1, the early warning that costs are rising) or 100%, and when actual spend passes 85% or 100%. A separate `BillingAlarm` on `EstimatedCharges` in `us-east-1` (threshold $2, topic `NotifyMe`) was made by hand and isn't managed here.
+- **Data protection:** the table and the user pool have deletion protection, so neither can be deleted until it is turned off. The table also has point-in-time recovery for 35 days. See section 9.
 - **Alert email:** `alert_email` has no default and is set in `terraform/terraform.tfvars`, which is gitignored because the repo is public. Plans fail without it.
 
 ## 8. Deployment
@@ -591,55 +592,110 @@ Unit tests live in `test/`, a separate package so test-only dependencies stay ou
 
 ## 9. Backups and data recovery
 
-**There is no automated backup of any kind.** Searching the Terraform for point-in-time recovery, AWS Backup, or on-demand backup resources finds nothing. Specifically:
+There are three layers, each covering what the one before can't. At the table's size (163 items, about 50 KB, in November 2026) none of them costs more than a fraction of a cent a month.
 
-| Item | State |
-| --- | --- |
-| DynamoDB point-in-time recovery | Not enabled |
-| AWS Backup plans or vaults | None |
-| Scheduled exports to S3 | None |
-| `deletion_protection_enabled` | `false` |
-| Cross-region replication (global tables) | None |
-| Terraform state | In S3; versioning is not managed by this repo, so confirm it in the bucket settings |
+| Layer | Covers | Where |
+| --- | --- | --- |
+| Deletion protection on the table and the user pool | A stray `terraform destroy`, console click or script deleting either. Losing the pool is worse than losing the table: every item is keyed by a Cognito sub, and a deleted pool's subs can't be got back | `terraform/dynamodb.tf`, `terraform/cognito.tf` |
+| Point-in-time recovery (PITR), 35 days | A bug or bad script damaging data, a user deleting a board or their account by mistake, and tasks the TTL has removed | `terraform/dynamodb.tf` |
+| A monthly full backup kept off AWS | Losing the AWS account or the user pool, or damage found after 35 days | `test-data/backup-all.js`, run by hand |
 
-The only backups are **manual JSON exports** taken with scripts in `test-data/`:
+AWS Backup was left out. Its copies stay in the same account, so it adds little over PITR, and it needs a vault, a plan, a selection and an IAM role. Terraform state is covered separately: the state bucket has versioning on, set outside this repo.
 
 ```mermaid
 flowchart LR
-    DDB[("ListPal-Dev")]
-    EXP["data-exporter.js<br/>(Scan, unmarshall)"]
-    FILES["test-data/exports/<br/>ListPal-Dev-Test-Data-YYYY-MM-DD.json"]
-    TMP["exports/tmp<br/>(the file to import)"]
-    IMP["data-importer.js<br/>(BatchWriteItem, 25 per batch)"]
+    LIVE[("ListPal-Dev")]
+    PITR[("Scratch table<br/>ListPal-Dev-restore-date")]
+    ALL["backup-all.js<br/>whole table + Cognito users"]
+    USER["backup-user.js<br/>one user's partition"]
+    FILES["ListPal/backups/*.json<br/>outside the repo, mode 0600"]
+    RESTORE["restore-backup.js<br/>dry run, then --apply"]
 
-    DDB --> EXP --> FILES
-    FILES -->|"copy or rename to"| TMP --> IMP --> DDB
+    LIVE -->|"restore-table-to-point-in-time"| PITR
+    LIVE --> ALL
+    LIVE --> USER
+    PITR -->|"--table"| ALL
+    PITR -->|"--table"| USER
+    ALL --> FILES
+    USER --> FILES
+    FILES --> RESTORE -->|"missing items, or changed ones with --overwrite"| LIVE
 ```
 
-### Taking a backup
+### The scripts
+
+They live in `test-data/` (ESM, run `npm install` there first) and work on `ListPal-Dev` in `eu-west-2`. Files go to `ListPal/backups/`, beside the repo, with mode 0600, because they hold email addresses and task text. Never commit one.
+
+- `backup-all.js [dir] [--table <name>]` saves the whole table, read by a consistent, paginated scan, and every Cognito user (sub, email, status). Cognito can't export passwords.
+- `backup-user.js (<email> | --sub <sub>) [dir] [--table <name>]` saves one user's partition and Cognito profile. `--sub` finds a user who is no longer in Cognito; their sub is in a monthly file.
+- `restore-backup.js <file> [--apply] [--overwrite] [--user <sub>] [--to-sub <sub>]` compares a file of either kind with the live table and reports what it would write. It writes only with `--apply`, and only missing items unless `--overwrite` is added. It never deletes anything, and it skips tasks past their expiry, which the TTL would delete again. `--user` restores one partition from a full backup, and `--to-sub` moves that user's items into a new account.
+
+Files keep items in DynamoDB's typed format with a SHA-256 checksum, which the restore checks. A file's `table` is where a restore writes, always `ListPal-Dev`. Its `sourceTable` is where the items were read, which differs when they came from a point-in-time restore.
+
+`npm test` in `test-data/` runs the restore tests against a fake client, not AWS. `data-importer.js` is still there for loading seed data in the older unmarshalled format, such as `terraform/config/db_import.json`, and isn't part of backups.
+
+### Monthly backup
 
 ```sh
 cd test-data
-yarn install   # or npm install; ESM project ("type": "module")
-node data-exporter.js  # writes exports/ListPal-Dev-Test-Data-<date>.json
+node backup-all.js
 ```
 
-### Restoring
+Check that the printed item and user counts look right. The files are small (about 130 KB), so keep them all.
+
+### Restoring one user (within 35 days)
+
+1. Pick a time before the damage, in UTC, and restore the table to a scratch copy. Rerun the wait if it times out.
+
+   ```sh
+   aws dynamodb restore-table-to-point-in-time --region eu-west-2 \
+     --source-table-name ListPal-Dev \
+     --target-table-name ListPal-Dev-restore-2026-11-05 \
+     --restore-date-time 2026-11-05T09:00:00Z
+   aws dynamodb wait table-exists --region eu-west-2 --table-name ListPal-Dev-restore-2026-11-05
+   ```
+
+2. Ask the user to close the app, so its outbox can't resend old edits on top of the restore.
+3. `node backup-user.js <email> --table ListPal-Dev-restore-2026-11-05`, or `--sub <sub>` if the account has been deleted.
+4. `node restore-backup.js <file>` and read the report. Then run it again with `--apply`, adding `--overwrite` if changed items should go back to how they were.
+5. Delete the scratch table: `aws dynamodb delete-table --region eu-west-2 --table-name ListPal-Dev-restore-2026-11-05`.
+
+Scores are fields on the board item, so they come back only with it (when it is missing, or with `--overwrite`), and restored tasks don't recalculate them. Edit them in the app if they're wrong.
+
+### Restoring the whole table
+
+As above, but run `node backup-all.js --table <scratch table>` at step 3. `restore-backup.js` then covers every partition. With `--overwrite`, every user loses the edits they made after the restore point.
+
+### If the table is deleted
+
+Deletion protection must be turned off first, so this should only happen on purpose. DynamoDB keeps a system backup of a table with PITR for 35 days after it is deleted, and it can be restored under the original name:
 
 ```sh
-cp exports/ListPal-Dev-Test-Data-<date>.json exports/tmp
-node data-importer.js   # writes to ListPal-Dev
+aws dynamodb list-backups --region eu-west-2 --table-name ListPal-Dev --backup-type SYSTEM
+aws dynamodb restore-table-from-backup --region eu-west-2 --target-table-name ListPal-Dev --backup-arn <arn>
 ```
 
-### Limitations to be aware of
+A restored table doesn't get back its TTL, PITR, deletion protection or tags, so run `terraform plan` and `apply` once it is active.
 
-- The exporter uses a single `Scan` with no pagination, so they stop at 1 MB of data per run. The table is small today but this will silently truncate once it grows.
-- The importer reads `./exports/tmp`, targets the hard-coded table `ListPal-Dev`, and does not retry `UnprocessedItems`.
-- The scripts have a hard-coded table name and region (`eu-west-2`), so they back up Dev only.
-- `test-data/*` is in the root `.gitignore`, but earlier exports were committed before that rule existed, so they are tracked. Exports contain real email addresses and task text. Treat them as personal data.
-- TTL deletes (expired tasks) are permanent and not recoverable without PITR.
+### If the AWS account or user pool is lost
 
-Recommended improvements, if wanted: enable `point_in_time_recovery_enabled = true` on the table, enable `deletion_protection_enabled`, and add an AWS Backup plan. These are one-line changes in `dynamodb.tf` for the module.
+Rebuild with Terraform (section 8). Each user then signs up again and gets a new sub. Find their old sub by email in the latest `listpal-full-backup-*.json`, and restore:
+
+```sh
+node restore-backup.js <full backup> --user <old sub> --to-sub <new sub> --overwrite
+```
+
+Their first sign-in creates a fresh user item and a Welcome board. `--overwrite` puts back their theme and reword tone over that user item, and they can delete the Welcome board. Run it without `--apply` first, as always.
+
+### Restore drill
+
+Once a few months, and after any change to the data model, run "Restoring one user" against your own account, stopping at the dry run in step 4. It costs a fraction of a cent and shows the runbook still works.
+
+### Limitations
+
+- The monthly backup depends on someone running it. A missed month leaves PITR as the only copy.
+- Everything except the monthly files is in the same AWS account.
+- Older exports in `test-data/exports` were committed before `test-data/*` was ignored, so git still tracks them. They contain real email addresses and task text: treat them as personal data.
+- A restore never deletes, so items created after the restore point stay. The report counts them as "Not in the backup". To match a point in time exactly, delete those by hand.
 
 ## 10. Security and quality observations
 

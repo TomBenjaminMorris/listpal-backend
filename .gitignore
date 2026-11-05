@@ -1,4 +1,9 @@
 src.zip
 bak/*
 test-data/*
+!test-data/backup-common.js
+!test-data/backup-user.js
+!test-data/backup-all.js
+!test-data/restore-backup.js
+!test-data/backup.test.js
 terraform/*.tfvars

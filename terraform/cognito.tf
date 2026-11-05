@@ -3,6 +3,8 @@ resource "aws_cognito_user_pool" "this" {
   tags                     = local.tags
   auto_verified_attributes = ["email"]
   username_attributes      = ["email"]
+  # Every item is keyed by a user's sub, and a deleted pool loses them all for good
+  deletion_protection = "ACTIVE"
 
   schema {
     attribute_data_type      = "String"
