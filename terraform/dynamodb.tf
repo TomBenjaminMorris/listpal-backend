@@ -6,9 +6,12 @@ module "dynamodb_table" {
   hash_key                    = "PK"
   range_key                   = "SK"
   table_class                 = "STANDARD"
-  deletion_protection_enabled = false
+  deletion_protection_enabled = true
   ttl_enabled                 = true
   ttl_attribute_name          = "ExpiryDateTTL"
+
+  # 35 days of restore points, billed on table size, which is a few kilobytes
+  point_in_time_recovery_enabled = true
 
   attributes = [
     {
