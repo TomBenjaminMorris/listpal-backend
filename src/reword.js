@@ -242,7 +242,7 @@ async function rewordTask(key, { text, category, board, tone }, userID) {
       ], tone, userID, signal);
       reworded = usable(retried) || reworded;
     } catch (error) {
-      console.error("Reword retry failed, keeping the first reply", error.name, error.message);
+      console.warn("Reword retry failed, keeping the first reply", error.name, error.message);
     }
   }
   return reworded;

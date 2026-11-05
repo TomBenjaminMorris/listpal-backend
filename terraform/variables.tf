@@ -21,3 +21,8 @@ variable "root_domain_zone" {
   description = "The root domain name for the website."
   default     = "vinsp.in"
 }
+
+variable "alert_email" {
+  type        = string
+  description = "Where cost and error alerts are emailed. Set in the gitignored terraform.tfvars, as the repo is public."
+}

@@ -1,3 +1,4 @@
 src.zip
 bak/*
 test-data/*
+terraform/*.tfvars
