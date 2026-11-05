@@ -4,7 +4,7 @@
 //            restores into ListPal-Dev.
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { parseArgs } from "node:util";
-import { REGION, TABLE, DEFAULT_DIR, listCognitoUsers, cognitoProfile, readAll, writeBackup } from "./backup-common.js";
+import { REGION, TABLE, DEFAULT_DIR, listCognitoUsers, cognitoProfile, readAll, restorePoint, writeBackup } from "./backup-common.js";
 
 const { values: { table }, positionals: [outputDir = DEFAULT_DIR] } = parseArgs({
     allowPositionals: true,
@@ -13,7 +13,9 @@ const { values: { table }, positionals: [outputDir = DEFAULT_DIR] } = parseArgs(
 
 // Cognito can't export passwords. The list keeps each email's sub, which a restore into a new account needs.
 const cognitoUsers = listCognitoUsers().map(cognitoProfile);
-const items = await readAll(new DynamoDBClient({ region: REGION }), ScanCommand, { TableName: table });
+const client = new DynamoDBClient({ region: REGION });
+const items = await readAll(client, ScanCommand, { TableName: table });
 
-const result = writeBackup(outputDir, "listpal-full-backup", { sourceTable: table, cognitoUsers }, items);
+const fields = { sourceTable: table, restorePoint: await restorePoint(client, table), cognitoUsers };
+const result = writeBackup(outputDir, "listpal-full-backup", fields, items);
 console.log(JSON.stringify({ ...result, cognitoUsers: cognitoUsers.length }, null, 2));

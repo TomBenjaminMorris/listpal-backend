@@ -104,7 +104,8 @@ export async function runRestore({ client, backup, apply = false, overwrite = fa
     const toWrite = overwrite ? [...plan.missing, ...plan.changed] : plan.missing;
 
     const readFrom = backup.sourceTable && backup.sourceTable !== backup.table ? ` (read from ${backup.sourceTable})` : "";
-    log(`Backup from ${backup.exportedAt}${readFrom}, restoring into ${toUserID ?? "every partition"} in ${backup.table}`);
+    const asAt = backup.restorePoint ? `Data as at restore point ${backup.restorePoint}` : `Backup from ${backup.exportedAt}`;
+    log(`${asAt}${readFrom}, restoring into ${toUserID ?? "every partition"} in ${backup.table}`);
     log(`  Already identical:              ${plan.unchanged.length}`);
     log(`  Missing, will be restored:      ${plan.missing.length}`);
     log(`  Changed since the backup:       ${plan.changed.length}${overwrite ? " (will be overwritten)" : " (kept, use --overwrite to replace)"}`);

@@ -6,7 +6,7 @@
 //            restores into ListPal-Dev.
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import { parseArgs } from "node:util";
-import { REGION, TABLE, DEFAULT_DIR, listCognitoUsers, cognitoProfile, readAll, writeBackup } from "./backup-common.js";
+import { REGION, TABLE, DEFAULT_DIR, listCognitoUsers, cognitoProfile, readAll, restorePoint, writeBackup } from "./backup-common.js";
 
 const { values: { sub, table }, positionals } = parseArgs({
     allowPositionals: true,
@@ -28,11 +28,13 @@ if (!users.length) console.warn("No Cognito user has that sub, so the backup has
 const cognito = users.length ? cognitoProfile(users[0]) : null;
 const userID = "u#" + (sub ?? cognito.attributes.sub);
 
-const items = await readAll(new DynamoDBClient({ region: REGION }), QueryCommand, {
+const client = new DynamoDBClient({ region: REGION });
+const items = await readAll(client, QueryCommand, {
     TableName: table,
     KeyConditionExpression: "PK = :pk",
     ExpressionAttributeValues: { ":pk": { S: userID } }
 });
 
-const { file, itemCount, entityCounts } = writeBackup(outputDir, "listpal-user-backup", { sourceTable: table, userID, cognito }, items);
+const fields = { sourceTable: table, restorePoint: await restorePoint(client, table), userID, cognito };
+const { file, itemCount, entityCounts } = writeBackup(outputDir, "listpal-user-backup", fields, items);
 console.log(JSON.stringify({ file, userID, itemCount, entityCounts }, null, 2));
