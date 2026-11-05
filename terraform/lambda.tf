@@ -6,7 +6,7 @@ data "archive_file" "api_lambda" {
 
 module "lambda_function" {
   source                            = "terraform-aws-modules/lambda/aws"
-  version                           = "~> 7.0"
+  version                           = "7.17.0"
   function_name                     = "${lower(var.app)}_${lower(var.env)}"
   description                       = "ListPal API endpoint"
   handler                           = "handler.handler"

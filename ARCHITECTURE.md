@@ -6,7 +6,7 @@ This document is a condensed map of the `listpal-backend` repository. It is writ
 
 ListPal is a task and goal tracking app. Users have **boards**, boards contain **tasks** grouped by **category**, and completing tasks earns **scores** (weekly, monthly, yearly) measured against **targets**.
 
-The backend is fully serverless on AWS, defined in Terraform, and has no CI/CD pipeline. Everything is deployed by hand from a laptop.
+The backend is fully serverless on AWS and defined in Terraform. It is deployed by hand from a laptop for now. The IAM roles that will let GitHub Actions deploy it instead are in place (section 8).
 
 | Concern | Choice |
 | --- | --- |
@@ -43,6 +43,7 @@ listpal-backend/
 ├── src.zip                    Build artefact written by Terraform (gitignored)
 ├── terraform/                 All infrastructure
 │   ├── versions.tf            S3 backend and provider constraints
+│   ├── .terraform.lock.hcl    Provider versions and hashes for macOS and Linux (CI)
 │   ├── providers.tf           AWS eu-west-2 plus alias use1 (us-east-1)
 │   ├── variables.tf           env, app, domain_name, root_domain_zone, alert_email
 │   ├── locals.tf              Route table (lambda_routes) and common tags
@@ -54,6 +55,7 @@ listpal-backend/
 │   ├── acm.tf / route53.tf    Certificate (us-east-1) and DNS for the login domain
 │   ├── dynamodb.tf            Main table
 │   ├── monitoring.tf          Lambda error alarms, their SNS topic, and the account's monthly cost budget
+│   ├── github_actions.tf      GitHub OIDC provider and the roles CI assumes, including the frontend's deploy role
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
 ├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock)
@@ -515,7 +517,7 @@ Key points:
 - **State backend:** S3 bucket `tbm-tf-state-bucket` in `eu-west-1`, key `listpal-infra`. No DynamoDB lock table is configured, so concurrent applies are not protected.
 - **Providers:** AWS `eu-west-2` by default, plus alias `use1` (`us-east-1`) because Cognito custom domains need a certificate in that region. Also requires `random`, `local`, `null`. The `archive` provider is used implicitly by `data "archive_file"`.
 - **Terraform version:** `.tool-versions` pins 1.3.0 (`required_version >= 1.3`). AWS provider `>= 5.21`.
-- **Community modules:** `terraform-aws-modules/lambda/aws ~> 7.0`, `apigateway-v2/aws 5.0.0`, `dynamodb-table/aws 4.0.0`.
+- **Community modules:** `terraform-aws-modules/lambda/aws` pinned exactly (7.17.0 for the API and score reset Lambdas, 7.21.1 for reword), `apigateway-v2/aws 5.0.0`, `dynamodb-table/aws 4.0.0`. The pins and the committed lock file matter because a fresh `init` with newer versions plans a bogus IAM rewrite, and every CI run is a fresh `init`.
 - **Domains:** The API is served at `api.vinsp.in` (module `domain_name = "*.vinsp.in"`, `subdomains = ["api"]`). The Cognito managed login is at `auth.listpal.dev.vinsp.in`. The Route 53 hosted zone `vinsp.in` must already exist.
 - **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains and callback URLs are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
 - **IAM:** Each Lambda has an inline policy with `Resource: "*"`.
@@ -527,7 +529,7 @@ Key points:
 - **Error alarms:** each Lambda's log group has a metric filter counting lines that contain `ERROR`, `Task timed out` or `Runtime exited`, published to the `ListPal` namespace. Lambda's own `Errors` metric isn't used, because the handlers catch their errors and return a 500 or 502, so it would only see timeouts and crashes. An alarm per function fires when its count reaches 1 in a 5-minute period and emails `alert_email` through the SNS topic. It clears after a quiet period, so each burst of errors sends one email. `console.warn` lines (such as moderation refusals and a failed reword retry, where the user still gets a reply) don't count. The logs are kept for one day, so check them soon after an alert.
 - **Cost budget:** `Monthly cost` is a $2 monthly budget covering the whole AWS account, not only ListPal. It emails `alert_email` directly (not through SNS) when the forecast passes 50% ($1, the early warning that costs are rising) or 100%, and when actual spend passes 85% or 100%.
 - **Data protection:** the table and the user pool have deletion protection, so neither can be deleted until it is turned off. The table also has point-in-time recovery for 35 days. See section 9.
-- **Alert email:** `alert_email` has no default and is set in `terraform/terraform.tfvars`, which is gitignored because the repo is public. Plans fail without it.
+- **Alert email:** `alert_email` has no default and is set in `terraform/terraform.tfvars`, which is gitignored because the repo is public. CI will read it from the `TF_VAR_alert_email` secret. It is marked `sensitive`, so plans in the public Actions logs don't print it. Plans fail without it.
 
 ## 8. Deployment
 
@@ -571,14 +573,34 @@ How the code packaging works:
 1. **State bucket:** `tbm-tf-state-bucket` must already exist in `eu-west-1`.
 2. **DNS zone:** the `vinsp.in` Route 53 zone must exist.
 3. **Managed login:** after the Cognito domain is created, the new managed login UI must be switched on in the AWS console (noted in a comment in `cognito.tf`).
-4. **OpenAI key:** `terraform apply` creates `/listpal/dev/openai-api-key` holding a placeholder, and rewords fail with a 502 until the real key replaces it. Set it by hand, so the key stays out of Terraform state and shell history:
+4. **OpenAI key:** `terraform apply` creates `/listpal/dev/openai-api-key` holding a placeholder, and rewords fail with a 502 until the real key replaces it. Set it by hand, so the key stays out of the repo and shell history:
    ```sh
    read -rs KEY && aws ssm put-parameter --region eu-west-2 --overwrite \
      --name /listpal/dev/openai-api-key --type SecureString --value "$KEY"; unset KEY
    ```
-   The same command replaces the key later. Never `terraform import` the parameter once it holds the real key, as the import would write the key into state. The key belongs to a dedicated OpenAI project whose model allow-list holds only `gpt-5-nano` and `omni-moderation-latest`. The key should have only Responses (Write) and Moderations (Request); create a new key to change its permissions, as edits to an existing key didn't take effect. The project is paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
+   The same command replaces the key later. Refreshes still copy the real key into state (section 10). The key belongs to a dedicated OpenAI project whose model allow-list holds only `gpt-5-nano` and `omni-moderation-latest`. The key should have only Responses (Write) and Moderations (Request); create a new key to change its permissions, as edits to an existing key didn't take effect. The project is paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
 5. **Alerts:** create `terraform/terraform.tfvars` holding `alert_email = "..."` before the first plan. After the apply, AWS emails that address a link to confirm the SNS subscription, and error alarms send nothing until it is clicked. Budget emails need no confirmation.
 6. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
+
+### GitHub Actions access
+
+`terraform/github_actions.tf` creates the account's GitHub OIDC provider and three roles. Each trusts exactly one repo and trigger, by the token's `sub` claim, because both repos are public. Pull requests from forks can't get a token at all.
+
+```mermaid
+flowchart LR
+    GH["token.actions.githubusercontent.com<br/>(OIDC provider)"]
+    FE["listpal-frontend<br/>push to main"] --> GH
+    BEM["listpal-backend<br/>push to main"] --> GH
+    BEP["listpal-backend<br/>pull request"] --> GH
+    GH -->|"sub: listpal-frontend main"| R1["listpal-frontend-deploy<br/>put objects in the site bucket,<br/>invalidate its distribution"]
+    GH -->|"sub: listpal-backend main"| R2["listpal-backend-apply<br/>AdministratorAccess"]
+    GH -->|"sub: listpal-backend pull_request"| R3["listpal-backend-plan<br/>ReadOnlyAccess, no user data"]
+```
+
+- **listpal-frontend-deploy** can list and put objects in `www.listpal.dev.vinsp.in` and create invalidations on distribution `E1AKHSV400BS9K`, nothing else. It has no delete, so old bundles stay for visitors still holding a cached `index.html`. The site lives in the frontend repo's own Terraform state, so the bucket and distribution ID are written into `locals` rather than referenced.
+- **listpal-backend-apply** has `AdministratorAccess`. Terraform here creates IAM roles, so a narrower policy would still be admin in practice. The trust on `main` is the real boundary.
+- **listpal-backend-plan** has `ReadOnlyAccess`, plus `kms:Decrypt` through SSM so the plan can refresh the OpenAI key parameter. An explicit deny stops it reading table items or listing Cognito users, which a plan never needs.
+- The roles had to be created by one `terraform apply` from a laptop, since CI can't create the role it signs in with. The apply role can change its own trust, which is accepted for a one-person project.
 
 ### Outputs
 
@@ -706,6 +728,7 @@ These are things a reader should know before changing the system. They are not f
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
 - Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is not atomic either: a failure partway leaves the board and some of its tasks, and deleting it again finishes the job.
 - `POST /reword-task` sends task text and its category and board names to OpenAI. OpenAI doesn't train on API data by default, but keeps requests for up to 30 days for abuse monitoring, even with `store: false`. Spend is limited by the route throttle, the daily quotas, and finally the OpenAI project's prepaid credits.
+- The real OpenAI key is in the Terraform state file. `ignore_changes` stops Terraform overwriting the key, but every refresh decrypts the parameter and stores its value. Anyone who can read `tbm-tf-state-bucket/listpal-infra` can read the key, and that includes the CI plan and apply roles. Taking the parameter out of Terraform would fix it.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
 ## 11. Where to look
@@ -724,3 +747,4 @@ These are things a reader should know before changing the system. They are not f
 | Change domains or certificates | `terraform/acm.tf`, `route53.tf`, `variables.tf` |
 | Change error alarms, the cost budget or where alerts go | `terraform/monitoring.tf`, and `alert_email` in the gitignored `terraform/terraform.tfvars` |
 | Back up or restore data | `test-data/` (section 9) |
+| Change what GitHub Actions may do in AWS | `terraform/github_actions.tf` (section 8) |

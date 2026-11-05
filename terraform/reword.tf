@@ -2,7 +2,7 @@ resource "aws_ssm_parameter" "openai_key" {
   name        = "/${lower(var.app)}/${lower(var.env)}/openai-api-key"
   description = "OpenAI API key for task rewording"
   type        = "SecureString"
-  # Only this placeholder reaches the state file. The real key is set by hand with `aws ssm put-parameter --overwrite`
+  # The real key is set by hand with `aws ssm put-parameter --overwrite`, so it never enters the repo. Refreshes still copy it into state.
   value = "set-by-hand"
 
   lifecycle {
@@ -15,7 +15,7 @@ resource "aws_ssm_parameter" "openai_key" {
 # A function of its own so only this role can read the OpenAI key, not the main API's
 module "reword_lambda_function" {
   source                            = "terraform-aws-modules/lambda/aws"
-  version                           = "~> 7.0"
+  version                           = "7.21.1"
   function_name                     = "${lower(var.app)}_reword_${lower(var.env)}"
   description                       = "ListPal task reword (OpenAI)"
   handler                           = "reword.handler"
