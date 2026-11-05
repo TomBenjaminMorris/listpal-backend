@@ -1,4 +1,5 @@
 // Shared by backup-user.js, backup-all.js and restore-backup.js. Nothing here writes to AWS.
+import { DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
@@ -36,6 +37,14 @@ export async function readAll(client, Command, input) {
         ExclusiveStartKey = page.LastEvaluatedKey;
     } while (ExclusiveStartKey);
     return items;
+}
+
+// A point-in-time restore holds the data as it was at its restore point, which can be well before the backup is taken.
+// The live table is skipped: once restored under its own name, it keeps that restore summary for good.
+export async function restorePoint(client, table) {
+    if (table === TABLE) return undefined;
+    const { Table } = await client.send(new DescribeTableCommand({ TableName: table }));
+    return Table.RestoreSummary?.RestoreDateTime?.toISOString();
 }
 
 // Items stay in DynamoDB's typed format, so a restore writes back exactly what was read.

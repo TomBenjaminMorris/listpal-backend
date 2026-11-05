@@ -629,7 +629,7 @@ They live in `test-data/` (ESM, run `npm install` there first) and work on `List
 - `backup-user.js (<email> | --sub <sub>) [dir] [--table <name>]` saves one user's partition and Cognito profile. `--sub` finds a user who is no longer in Cognito; their sub is in a monthly file.
 - `restore-backup.js <file> [--apply] [--overwrite] [--user <sub>] [--to-sub <sub>]` compares a file of either kind with the live table and reports what it would write. It writes only with `--apply`, and only missing items unless `--overwrite` is added. It never deletes anything, and it skips tasks past their expiry, which the TTL would delete again. `--user` restores one partition from a full backup, and `--to-sub` moves that user's items into a new account.
 
-Files keep items in DynamoDB's typed format with a SHA-256 checksum, which the restore checks. A file's `table` is where a restore writes, always `ListPal-Dev`. Its `sourceTable` is where the items were read, which differs when they came from a point-in-time restore.
+Files keep items in DynamoDB's typed format with a SHA-256 checksum, which the restore checks. A file's `table` is where a restore writes, always `ListPal-Dev`. Its `sourceTable` is where the items were read, which differs when they came from a point-in-time restore. In that case `restorePoint` records the time the data is from, and the restore report shows it in place of the export time, which can be some time later.
 
 `npm test` in `test-data/` runs the restore tests against a fake client, not AWS. `data-importer.js` is still there for loading seed data in the older unmarshalled format, such as `terraform/config/db_import.json`, and isn't part of backups.
 

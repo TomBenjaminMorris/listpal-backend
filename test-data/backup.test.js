@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { QueryCommand, ScanCommand, BatchWriteItemCommand } from "@aws-sdk/client-dynamodb";
-import { readAll } from "./backup-common.js";
+import { QueryCommand, ScanCommand, BatchWriteItemCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
+import { readAll, restorePoint } from "./backup-common.js";
 import { runRestore, writeItems } from "./restore-backup.js";
 
 const NOW = Date.UTC(2026, 10, 5);
@@ -134,6 +134,39 @@ test("a backup file that has changed is refused", async () => {
     const backup = backupOf([task("a", "1")]);
     backup.items[0].Description.S = "tampered";
     await assert.rejects(runRestore({ client: fakeClient([]), backup, log: quiet }), /checksum mismatch/);
+});
+
+test("restorePoint reads a restored table's restore time, and never asks about the live table", async () => {
+    const sent = [];
+    const client = {
+        async send(command) {
+            sent.push(command);
+            assert.ok(command instanceof DescribeTableCommand);
+            const restored = command.input.TableName === "ListPal-Dev-restore";
+            return { Table: restored ? { RestoreSummary: { RestoreDateTime: new Date("2026-11-05T19:12:46.802Z") } } : {} };
+        }
+    };
+    assert.equal(await restorePoint(client, "ListPal-Dev-restore"), "2026-11-05T19:12:46.802Z");
+    assert.equal(await restorePoint(client, "ListPal-Dev-copy"), undefined);
+    assert.equal(await restorePoint(client, "ListPal-Dev"), undefined);
+    assert.equal(sent.length, 2);
+});
+
+test("the report dates a backup by its restore point when it has one", async () => {
+    const lines = [];
+    const restored = backupOf([userItem("a")], {
+        userID: "u#a",
+        exportedAt: "2026-11-05T19:22:09.604Z",
+        sourceTable: "ListPal-Dev-restore",
+        restorePoint: "2026-11-05T19:12:46.802Z"
+    });
+    await runRestore({ client: fakeClient([]), backup: restored, log: line => lines.push(line) });
+    assert.equal(lines[0], "Data as at restore point 2026-11-05T19:12:46.802Z (read from ListPal-Dev-restore), restoring into u#a in ListPal-Dev");
+
+    lines.length = 0;
+    const live = backupOf([userItem("a")], { userID: "u#a", sourceTable: "ListPal-Dev" });
+    await runRestore({ client: fakeClient([]), backup: live, log: line => lines.push(line) });
+    assert.equal(lines[0], "Backup from 2026-11-01T00:00:00.000Z, restoring into u#a in ListPal-Dev");
 });
 
 test("writeItems resends unprocessed items", async () => {
