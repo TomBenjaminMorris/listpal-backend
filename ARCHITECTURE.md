@@ -10,7 +10,7 @@ The backend is fully serverless on AWS and defined in Terraform. GitHub Actions 
 
 | Concern | Choice |
 | --- | --- |
-| Compute | AWS Lambda, Node.js 20 (CommonJS) |
+| Compute | AWS Lambda, Node.js 24 (CommonJS). Handlers must be `async`, as the Node.js 24 runtime drops callback-style handlers |
 | API | API Gateway v2 (HTTP API): one Lambda for most routes, a separate one for `POST /reword-task` |
 | AI | OpenAI Responses API (`gpt-5-nano`) behind the moderation endpoint, key in SSM Parameter Store, used only to reword a task |
 | Auth | Cognito user pool, JWT authoriser, OAuth code flow with a custom domain |
@@ -40,7 +40,7 @@ listpal-backend/
 │   ├── reword_tones.js        The reword tones and their prompt wording, also used to check POST /user-reword-tone
 │   ├── respond.js             The error response shape both HTTP Lambdas return
 │   ├── package.json / yarn.lock
-│   └── .tool-versions         nodejs 20.0.0
+│   └── .tool-versions         nodejs 24.22.2, matching the Lambda runtime
 ├── src.zip                    Build artefact written by Terraform (gitignored)
 ├── terraform/                 All infrastructure
 │   ├── versions.tf            S3 backend and provider constraints
@@ -83,7 +83,7 @@ flowchart LR
         APIGW["API Gateway HTTP API<br/>api.vinsp.in<br/>JWT authoriser"]
     end
 
-    subgraph Compute["Lambda (nodejs20.x, one zip)"]
+    subgraph Compute["Lambda (nodejs24.x, one zip)"]
         L1["listpal_dev<br/>handler.handler<br/>1024 MB, 15 s timeout"]
         L2["listpal_score_reset_dev<br/>score_reset.handler"]
         L3["listpal_reword_dev<br/>reword.handler<br/>256 MB, 10 s timeout"]
@@ -557,6 +557,9 @@ Rules the workflows follow, because the repo and its Actions logs are public:
 - Dependencies are installed with `--frozen-lockfile` and `--ignore-scripts` wherever AWS credentials are present.
 - The plan is never posted to the PR or uploaded as an artifact, as it contains state values. `alert_email` comes from the `TF_VAR_alert_email` Actions secret and is `sensitive`.
 - Never add a `pull_request_target`, `issue_comment` or `workflow_run` workflow. Any workflow running on `main` can assume the apply role.
+- CI runs Node 24, the same as the Lambda runtime (`nodejs24.x`, supported until April 2028).
+
+`main` is protected: a PR can't merge until `tests / Unit tests` and `Terraform plan` pass. Admins can still bypass with `gh pr merge --admin`, which the `/merge` skill uses only for "Force merge". No review is required. The rule was set with `gh api -X PUT repos/TomBenjaminMorris/listpal-backend/branches/main/protection`, not Terraform, and a renamed CI job needs its check name updated there.
 
 Getting a change onto `main` has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it, which now deploys it.
 

@@ -57,7 +57,7 @@ module "lambda_function_reset" {
   function_name                     = "${lower(var.app)}_score_reset_${lower(var.env)}"
   description                       = "ListPal Score Reset"
   handler                           = "score_reset.handler"
-  runtime                           = "nodejs20.x"
+  runtime                           = "nodejs24.x"
   create_package                    = false
   local_existing_package            = data.archive_file.api_lambda.output_path
   cloudwatch_logs_retention_in_days = 1
