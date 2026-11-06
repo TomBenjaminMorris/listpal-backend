@@ -17,7 +17,7 @@ If there is nothing to merge at all, say so and stop.
 
 ### 2. Stop if the local checks failed
 
-A failed check doesn't stop a PR, but it does stop a merge. If a check failed because of this work, leave the PR open and report the failure. "Force merge" carries on regardless and records the failure in the force merge comment.
+A failed check doesn't stop a PR, but it does stop a merge. If a check failed because of this work, leave the PR open and report the failure. "Force merge" carries on regardless and records the failure in the force merge comment. An open high finding from the specialist reviews counts as a failed check. If it is a security finding, the force merge comment says only that a review finding was open, not what it was, as the repo is public.
 
 ### 3. Check the plan
 

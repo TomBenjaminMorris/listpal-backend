@@ -35,19 +35,43 @@ Run `terraform -chdir=terraform validate` too if `terraform/` changed and it's a
 
 Check that `ARCHITECTURE.md` reflects the branch and update it if not, as `CLAUDE.md` requires. A new route needs both a `lambda_routes` entry in `terraform/locals.tf` and a `case` in `src/handler.js`.
 
-### 3. Commit and push
+### 3. Run the specialist reviews
+
+Three reviewer agents live in `.claude/agents/`. Each takes a few minutes, so run only the ones the diff calls for:
+
+| Reviewer | Run it when the change touches |
+| --- | --- |
+| `security-reviewer` | routing or ownership checks in `handler.js`, any route's input handling, `/sync` operations, the reword Lambda or its prompt, IAM, Cognito, API Gateway, SSM or GitHub OIDC in `terraform/`, the workflows, or `src/package.json` dependencies |
+| `performance-reviewer` | DynamoDB calls, `task_sync.js`, `score_reset.js`, `reword.js`, Lambda memory, timeout or dependencies, or error handling and retries |
+| `complexity-reviewer` | roughly 150 or more changed lines in `src/`, a new module, a refactor, or a function that has grown past about 60 lines |
+
+Run none for docs, comments or tests alone, or a small change to a message or constant. If the PR already had these reviews and only small fixes have followed, don't run them again.
+
+Start the chosen reviewers in parallel, in one message, and name the files in this work so they leave unrelated edits alone. If the session started outside this repo, the agent types aren't listed: use a `general-purpose` agent with the agent file's body as its prompt instead.
+
+Then act on the findings:
+
+- **High:** fix it if the fix is clear and inside this work, then rerun the tests. Otherwise leave it open and treat it as a failed check, which stops a merge.
+- **Medium:** fix it if it's small and inside this work. Otherwise report it.
+- **Low:** report it only.
+
+If you think a finding is wrong, don't fix it: say why in the report.
+
+The repo is public. Never put an open security finding in a commit message, the PR description or a PR comment. Tell the user only. In the Testing section, name the reviews that ran and say their findings were fixed or reported.
+
+### 4. Commit and push
 
 If on `main`, branch first, using the repo's prefixes: `feature/`, `fix/`, `perf/` or `chore/`, followed by a short description. Stage files by name, never with `git add -A` or `git add .`, then read `git diff --cached --stat` to confirm the list is right. Nothing from `test-data/exports` can be committed, as it holds real email addresses, and no secrets or personal data either.
 
 Follow the repo's commit style: a short imperative subject and a brief why. Push with `git push -u origin <branch>`.
 
-### 4. Raise the PR
+### 5. Raise the PR
 
 Use `gh pr create --base main` with the description format below, as its own tool call.
 
-### 5. Report
+### 6. Report
 
-Give the PR link, the check results, and anything left uncommitted. Mention that the checkout is still on the PR's branch, and that typing "Merge" will merge it.
+Give the PR link, the check results, which reviews ran and any findings left open, and anything left uncommitted. Mention that the checkout is still on the PR's branch, and that typing "Merge" will merge it.
 
 ## PR description
 
