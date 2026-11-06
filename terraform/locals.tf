@@ -28,6 +28,10 @@ locals {
       route     = "POST /user-reword-tone"
       protected = true
     },
+    user_ai_enabled = {
+      route     = "POST /user-ai-enabled"
+      protected = true
+    },
     delete_board = {
       route     = "POST /delete-board"
       protected = true

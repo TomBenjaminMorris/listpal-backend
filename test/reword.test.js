@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { mockClient } = require("aws-sdk-client-mock");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
-const { DynamoDBClient, UpdateItemCommand, ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, GetItemCommand, UpdateItemCommand, ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
 const { DEFAULT_REWORD_TONE, EXAMPLE_TASKS, REWORD_TONES } = require("../src/reword_tones");
 
 const ssmMock = mockClient(SSMClient);
@@ -39,6 +39,7 @@ test.beforeEach(() => {
   ssmMock.reset();
   dynamoMock.reset();
   dynamoMock.on(UpdateItemCommand).resolves({});
+  dynamoMock.on(GetItemCommand).resolves({ Item: { AIEnabled: { BOOL: true } } });
   ssmMock.on(GetParameterCommand).resolves({ Parameter: { Value: "sk-test" } });
   fetchCalls = [];
   moderationCalls = [];
@@ -329,6 +330,42 @@ test("counts the reword against the user and then everyone, before calling OpenA
     assert.equal(update.ExpressionAttributeValues[":ttl"].N, String(Date.parse(today()) / 1000 + 2 * 24 * 60 * 60));
   }
   assert.equal(fetchCalls.length, 1);
+});
+
+test("checks the caller's AI setting with a consistent read before counting", async () => {
+  await request({ text: "dentist thing" });
+  const [{ args: [{ input }] }] = dynamoMock.commandCalls(GetItemCommand);
+  assert.equal(input.TableName, "ListPal-Dev");
+  assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
+  assert.equal(input.ProjectionExpression, "AIEnabled");
+  assert.equal(input.ConsistentRead, true);
+});
+
+test("a user who turned AI off gets a 403 ai_disabled, and nothing is counted or sent", async () => {
+  dynamoMock.on(GetItemCommand).resolves({ Item: { AIEnabled: { BOOL: false } } });
+  const response = await request({ text: "dentist thing" });
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(JSON.parse(response.body), { error: "ai_disabled" });
+  assert.equal(counterCalls().length, 0);
+  assert.equal(moderationCalls.length, 0);
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(ssmMock.commandCalls(GetParameterCommand).length, 0);
+});
+
+for (const [name, reply] of [["a user who never set it", { Item: {} }], ["a user with no user item", {}]]) {
+  test(`${name} can reword, as AI is on by default`, async () => {
+    dynamoMock.on(GetItemCommand).resolves(reply);
+    const response = await request({ text: "dentist thing" });
+    assert.deepEqual(response, { data: { text: "Book a dentist appointment" } });
+  });
+}
+
+test("a failed read of the AI setting is a 500 and calls nothing else", async () => {
+  dynamoMock.on(GetItemCommand).rejects(new Error("throttled"));
+  const response = await request({ text: "dentist thing" });
+  assert.equal(response.statusCode, 500);
+  assert.equal(counterCalls().length, 0);
+  assert.equal(moderationCalls.length + fetchCalls.length, 0);
 });
 
 test("a user at their daily limit gets a 429 daily_limit and costs nothing", async () => {

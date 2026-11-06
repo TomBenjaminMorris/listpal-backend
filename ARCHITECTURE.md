@@ -38,6 +38,7 @@ listpal-backend/
 │   ├── welcome_board.js       The example board and tasks a new user starts with
 │   ├── reword.js              Reword Lambda: POST /reword-task, calls OpenAI
 │   ├── reword_tones.js        The reword tones and their prompt wording, also used to check POST /user-reword-tone
+│   ├── ai_features.js         The AI opt-out check every AI route makes first
 │   ├── respond.js             The error response shape both HTTP Lambdas return
 │   ├── package.json / yarn.lock
 │   └── .tool-versions         nodejs 22.23.4, matching the Lambda runtime
@@ -161,11 +162,12 @@ Routes are declared once in `terraform/locals.tf` (`lambda_routes`) and fed into
 | --- | --- | --- |
 | `GET /active-tasks?boardID=` | JWT | Tasks for a board whose `GSI1-SK` is at or after now (ownership checked alongside the task query, 400 without `boardID`) |
 | `GET /boards` | JWT | All boards for the user, with scores, targets, emoji, category order |
-| `GET /user` | JWT | User theme and reword tone |
+| `GET /user` | JWT | User theme, reword tone and AI setting |
 | `POST /new-user` | JWT | Create the caller's user, welcome board and its example tasks in one transaction. Does nothing if the user already exists. See "New user flow" above |
 | `POST /sync` | JWT | Batch of up to 50 ops: `create`, `update`, `delete` on tasks and `create`, `update` on boards (the main write path). Returns a status per op and the new scores of any board whose score changed. See "Task sync" below |
 | `POST /user-theme` | JWT | Set theme |
 | `POST /user-reword-tone` | JWT | Set the reword tone: `casual`, `concise` or `formal` (400 otherwise). See "Task reword" below |
+| `POST /user-ai-enabled` | JWT | Turn every AI feature on or off: `{ enabled }` must be a boolean (400 otherwise). See "AI opt-out" below |
 | `POST /delete-account` | JWT | Deletes every item in the user's partition, then their Cognito user. See "Account deletion" below |
 | `POST /delete-board` | JWT | Deletes all the board's tasks, expired ones included, in batches of 25, then the board (ownership checked). See "Board deletion" below |
 | `POST /reword-task` | JWT | Returns a clearer wording of a task's text from OpenAI. Writes no task: the frontend saves the new text through `POST /sync`. Runs on its own Lambda. See "Task reword" below |
@@ -344,6 +346,12 @@ Scores can't be set this way: they change only through ticks and `POST /board-sc
 - If a create hits a transient error (`retry`), the batch's task ops for that board also return `retry` instead of `unknown board`, so the client keeps them and resends them with the create.
 - A create resent after the board was deleted would bring it back. The client stops this by dropping a deleted board's queued records.
 
+### AI opt-out
+
+One switch in Settings turns off every AI feature, today only the task reword. `POST /user-ai-enabled` saves `AIEnabled` on the user item. No default is written, and a missing value means on, so users from before the switch keep AI.
+
+The client hides AI features once the user opts out, but the server enforces it too: another device, or a tab still holding the old setting, could otherwise send text to OpenAI. Every AI route calls `userAllowsAI` in `src/ai_features.js` before anything else, a consistent `GetItem` of `AIEnabled` on the user item, and refuses an opted-out user with 403 `{ error: "ai_disabled" }`. The check comes before the quota, so a refused request costs nothing. A new AI feature must make the same check first and add `dynamodb:GetItem` to its Lambda's role if it lacks it.
+
 ### Task reword
 
 `POST /reword-task` takes `{ text, category, board, tone }` and returns `{ data: { text } }`: the task reworded to start with a verb and say exactly what to do, in the chosen tone. The category and board names are context only. The route takes text and returns text, and never reads or writes a task, so a reword reaches DynamoDB the way a typed edit does: through the client's outbox and `POST /sync`. Its only writes are the daily quota counters. The code is `src/reword.js`.
@@ -360,6 +368,10 @@ sequenceDiagram
     F->>G: POST /reword-task {text, category, board, tone}
     G->>G: JWT authoriser, route throttle (2/s, burst 5)
     G->>R: routeKey POST /reword-task
+    R->>D: GetItem user's AIEnabled, consistent
+    alt user turned AI off
+        R-->>F: 403 ai_disabled
+    end
     R->>D: UpdateItem user counter, if under 30
     alt user at limit
         R-->>F: 429 daily_limit
@@ -389,7 +401,8 @@ sequenceDiagram
     end
 ```
 
-- **Its own Lambda.** `listpal_reword_dev` runs the same zip with handler `reword.handler`. Its role can read the one SSM parameter and update items in the table, nothing else, and the main API Lambda can't read the key at all.
+- **Its own Lambda.** `listpal_reword_dev` runs the same zip with handler `reword.handler`. Its role can read the one SSM parameter and read and update items in the table, nothing else, and the main API Lambda can't read the key at all.
+- **AI opt-out first.** A user who turned AI off gets 403 `ai_disabled` before the quota or OpenAI is touched. See "AI opt-out" above.
 - **Daily quotas.** Each user gets 30 rewords per UTC day and everyone together 500, so one person can't spend without limit through many accounts. At `gpt-5-nano` prices the global cap keeps the worst day to a cent or two. Each is a counter item (see the data model) bumped by an `UpdateItem` with `ADD Count 1`, conditioned on the count being missing or under the limit. Behaviour that matters when changing this code:
   - The two counters are separate updates, not a transaction. Every reword touches the one global item, and concurrent transactions on an item cancel each other with `TransactionConflict`, where concurrent updates are applied in turn.
   - The user's counter goes first, so a user at their limit is refused (429 `daily_limit`) without using up the global allowance.
@@ -437,7 +450,7 @@ DynamoDB, on-demand style single-table patterns. The table has `PK` (S), `SK` (S
 
 | Entity | PK | SK | GSI1-PK | GSI1-SK | Key attributes |
 | --- | --- | --- | --- | --- | --- |
-| User | `u#<cognito sub>` | `u#<sub>` | `u#` | `u#<sub>` | `Theme`, `RewordTone` (missing until the user picks one, which means casual). Email and name live only in Cognito |
+| User | `u#<cognito sub>` | `u#<sub>` | `u#` | `u#<sub>` | `Theme`, `RewordTone` (missing until the user picks one, which means casual), `AIEnabled` (boolean, missing until the user switches AI off, which means on). Email and name live only in Cognito |
 | Board | `u#<sub>` | `b#<uuid>` | `b#` | `b#<uuid>` | `Board`, `Emoji`, `CategoryOrder` (JSON string), `WScore/MScore/YScore`, `WTarget/MTarget/YTarget` (defaults 7, 31, 365) |
 | Task | `u#<sub>` | `t#<uuid>` | `b#<boardUuid>` | expiry as epoch ms string, or `"nil"` | `Description`, `Category`, `Emoji`, `CreatedDate`, `CompletedDate`, `ExpiryDate`, `ExpiryDateTTL`, `Important`, `Link` |
 | Reword counter (user) | `u#<sub>` | `ai#<YYYY-MM-DD>` (UTC) | none | none | `Count`, `ExpiryDateTTL` (two days after the day starts, in epoch seconds) |
@@ -526,7 +539,7 @@ Key points:
   - API Lambda: `Query`, `GetItem`, `UpdateItem`, `PutItem`, `DeleteItem`, `BatchWriteItem` (board deletion) plus stream actions.
   - Score reset: `Query`, `UpdateItem`.
   - API: also `cognito-idp:AdminDeleteUser`, scoped to this user pool, for `POST /delete-account`.
-  - Reword: only `ssm:GetParameter` on the OpenAI key's parameter and `dynamodb:UpdateItem` on the main table (for the quota counters), both scoped to their ARNs. Decryption with the AWS-managed `aws/ssm` key needs no KMS statement. API Gateway may invoke it only for `POST /reword-task`.
+  - Reword: only `ssm:GetParameter` on the OpenAI key's parameter and `dynamodb:GetItem` and `dynamodb:UpdateItem` on the main table (for the AI opt-out check and the quota counters), both scoped to their ARNs. Decryption with the AWS-managed `aws/ssm` key needs no KMS statement. API Gateway may invoke it only for `POST /reword-task`.
 - **Logging:** Lambda and API access log groups keep logs for one day only.
 - **Error alarms:** each Lambda's log group has a metric filter counting lines that contain `ERROR`, `Task timed out` or `Runtime exited`, published to the `ListPal` namespace. Lambda's own `Errors` metric isn't used, because the handlers catch their errors and return a 500 or 502, so it would only see timeouts and crashes. An alarm per function fires when its count reaches 1 in a 5-minute period and emails `alert_email` through the SNS topic. It clears after a quiet period, so each burst of errors sends one email. `console.warn` lines (such as moderation refusals and a failed reword retry, where the user still gets a reply) don't count. The logs are kept for one day, so check them soon after an alert.
 - **Cost budget:** `Monthly cost` is a $2 monthly budget covering the whole AWS account, not only ListPal. It emails `alert_email` directly (not through SNS) when the forecast passes 50% ($1, the early warning that costs are rising) or 100%, and when actual spend passes 85% or 100%.
@@ -723,7 +736,7 @@ Rebuild with Terraform (section 8). Each user then signs up again and gets a new
 node restore-backup.js <full backup> --user <old sub> --to-sub <new sub> --overwrite
 ```
 
-Their first sign-in creates a fresh user item and a Welcome board. `--overwrite` puts back their theme and reword tone over that user item, and they can delete the Welcome board. Run it without `--apply` first, as always.
+Their first sign-in creates a fresh user item and a Welcome board. `--overwrite` puts back their theme, reword tone and AI setting over that user item, and they can delete the Welcome board. Run it without `--apply` first, as always.
 
 ### Restore drill
 

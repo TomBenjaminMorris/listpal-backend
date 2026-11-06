@@ -30,7 +30,7 @@ module "reword_lambda_function" {
             },
             {
                 "Effect": "Allow",
-                "Action": "dynamodb:UpdateItem",
+                "Action": ["dynamodb:GetItem", "dynamodb:UpdateItem"],
                 "Resource": "${module.dynamodb_table.dynamodb_table_arn}"
             }
         ]

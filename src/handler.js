@@ -52,6 +52,13 @@ module.exports.handler = async (event) => {
         }
         return { data: await setUserField(userID, "RewordTone", body.tone) };
 
+      // The opt-out for every AI feature. No default is written: a missing value means on, see src/ai_features.js
+      case "POST /user-ai-enabled":
+        if (typeof body?.enabled !== "boolean") {
+          return respond(400, { error: "enabled must be true or false" });
+        }
+        return { data: await setUserField(userID, "AIEnabled", body.enabled) };
+
       // Task and board settings changes
       case "POST /sync":
         try {
@@ -172,7 +179,7 @@ function userQuery(userID) {
     // The frontend reads this straight after POST /new-user, and a missing user sends it back to set up again
     ConsistentRead: true,
     KeyConditionExpression: "PK = :pk And SK = :pk",
-    ProjectionExpression: "Theme, RewordTone",
+    ProjectionExpression: "Theme, RewordTone, AIEnabled",
     ExpressionAttributeValues: marshall({ ":pk": userID })
   };
 }
