@@ -59,7 +59,7 @@ listpal-backend/
 │   ├── github_actions.tf      GitHub OIDC provider and the roles CI assumes, including the frontend's deploy role
 │   ├── outputs.tf             api_endpoint
 │   └── config/                db-schema.json (NoSQL Workbench model), db_import.json (seed data)
-├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock)
+├── test/                      Unit tests, a separate package (node --test, aws-sdk-client-mock), with .tool-versions matching src/
 ├── test-data/                 Backup and restore scripts and their tests (section 9), the seed importer, a one-off to strip old Email and Name attributes, plus old export files
 └── bak/                       Old code kept for reference (gitignored, ignore it)
 ```
