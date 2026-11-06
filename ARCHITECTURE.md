@@ -395,7 +395,7 @@ sequenceDiagram
   - If the global counter refuses (429 `busy_today`), the user's count is taken back with `ADD Count -1`. The refund is best effort: if it fails, the user loses one reword for the day.
   - The quota is spent before the OpenAI call and isn't refunded when that call fails, so a failing call can't be retried without limit.
   - Any other DynamoDB error is a 500, and OpenAI isn't called.
-- **The key** is an SSM `SecureString`, `/listpal/dev/openai-api-key`, encrypted with the AWS-managed `aws/ssm` key. Terraform creates the parameter (`aws_ssm_parameter.openai_key` in `terraform/reword.tf`) with a placeholder value and ignores later changes to it, so it tracks the parameter's name, type and encryption while only the placeholder reaches the state file. The real key is set by hand (see "First-time deployment extras"). Terraform gives the Lambda only its name. The Lambda reads it on the first request and keeps it in memory, and forgets it when OpenAI answers 401, so a replaced key is picked up on the next request.
+- **The key** is an SSM `SecureString`, `/listpal/dev/openai-api-key`, encrypted with the AWS-managed `aws/ssm` key. The parameter is created and set by hand (see "First-time deployment extras"), not by Terraform. A Terraform-managed SecureString, or a data source reading one, has its decrypted value copied into state on every refresh, even with `ignore_changes`. `terraform/reword.tf` only builds the parameter's name and ARN as locals, and gives the Lambda the name. The Lambda reads it on the first request and keeps it in memory, and forgets it when OpenAI answers 401, so a replaced key is picked up on the next request.
 - **Validation (400):** `text` must be a string of 1 to 500 characters after trimming. `category` and `board` are optional strings of at most 100. `tone` is never refused: a missing or unknown one gets the default, casual, as it changes only the style.
 - **The OpenAI request** is a plain `fetch` (no SDK in the zip) to the Responses API with model `gpt-5-nano`, the cheapest text model on OpenAI's pricing page on 2 November 2026, at $0.05 input and $0.40 output per million tokens. A reword is a few hundred tokens, a few thousandths of a cent. The task goes in as JSON so the model treats it as data, and the instructions say never to follow it. Its lines are sent as an array (`task_lines`), because a line break inside a JSON string reaches the model as the two characters `\n`, and it merged the lines. Blank lines are left out of the array and put back afterwards, as the model dropped them; if the reply has a different number of lines, its own layout is kept. Other settings:
   - `reasoning: { effort: "minimal" }`, as `gpt-5-nano` is a reasoning model and its reasoning tokens are billed as output
@@ -486,7 +486,7 @@ flowchart TB
     subgraph euw2["eu-west-2 (default provider)"]
         APIGW["API Gateway v2<br/>ListPal-Dev<br/>api.vinsp.in"]
         L["3 Lambda functions<br/>+ log groups (1 day)"]
-        SSMP[("SSM parameter<br/>OpenAI key, value set by hand")]
+        SSMP[("SSM parameter<br/>OpenAI key, created by hand,<br/>not in Terraform")]
         DDB[("1 DynamoDB table")]
         COG["Cognito user pool<br/>+ client + domain"]
         EVB["3 EventBridge rules"]
@@ -573,12 +573,12 @@ How the code packaging works:
 1. **State bucket:** `tbm-tf-state-bucket` must already exist in `eu-west-1`.
 2. **DNS zone:** the `vinsp.in` Route 53 zone must exist.
 3. **Managed login:** after the Cognito domain is created, the new managed login UI must be switched on in the AWS console (noted in a comment in `cognito.tf`).
-4. **OpenAI key:** `terraform apply` creates `/listpal/dev/openai-api-key` holding a placeholder, and rewords fail with a 502 until the real key replaces it. Set it by hand, so the key stays out of the repo and shell history:
+4. **OpenAI key:** create `/listpal/dev/openai-api-key` by hand. Until it exists, rewords fail with a 502. Setting it by hand keeps the key out of the repo, the Terraform state and shell history:
    ```sh
    read -rs KEY && aws ssm put-parameter --region eu-west-2 --overwrite \
      --name /listpal/dev/openai-api-key --type SecureString --value "$KEY"; unset KEY
    ```
-   The same command replaces the key later. Refreshes still copy the real key into state (section 10). The key belongs to a dedicated OpenAI project whose model allow-list holds only `gpt-5-nano` and `omni-moderation-latest`. The key should have only Responses (Write) and Moderations (Request); create a new key to change its permissions, as edits to an existing key didn't take effect. The project is paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
+   The same command replaces the key later. Never bring the parameter back into Terraform, as a resource or a data source, or the key returns to the state file. The key belongs to a dedicated OpenAI project whose model allow-list holds only `gpt-5-nano` and `omni-moderation-latest`. The key should have only Responses (Write) and Moderations (Request); create a new key to change its permissions, as edits to an existing key didn't take effect. The project is paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
 5. **Alerts:** create `terraform/terraform.tfvars` holding `alert_email = "..."` before the first plan. After the apply, AWS emails that address a link to confirm the SNS subscription, and error alarms send nothing until it is clicked. Budget emails need no confirmation.
 6. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
 
@@ -728,7 +728,7 @@ These are things a reader should know before changing the system. They are not f
 - The API Lambda trusts the gateway for token validation and only decodes the JWT.
 - Batches are not atomic. Each `POST /sync` op stands alone, so a batch can partly apply, and the client must act on the per-op `results`. Board deletion is not atomic either: a failure partway leaves the board and some of its tasks, and deleting it again finishes the job.
 - `POST /reword-task` sends task text and its category and board names to OpenAI. OpenAI doesn't train on API data by default, but keeps requests for up to 30 days for abuse monitoring, even with `store: false`. Spend is limited by the route throttle, the daily quotas, and finally the OpenAI project's prepaid credits.
-- The real OpenAI key is in the Terraform state file. `ignore_changes` stops Terraform overwriting the key, but every refresh decrypts the parameter and stores its value. Anyone who can read `tbm-tf-state-bucket/listpal-infra` can read the key, and that includes the CI plan and apply roles. Taking the parameter out of Terraform would fix it.
+- Until November 2026 Terraform managed the OpenAI key's parameter, and every refresh copied the real key into state. The parameter is no longer in Terraform, but the state bucket is versioned, so older state versions still hold the key that was live then. That key must be treated as exposed and revoked once replaced.
 - A git commit message says the cron moved to 3:00 AM, but the Terraform currently says 00:00 UTC for score resets. Trust the Terraform.
 
 ## 11. Where to look
