@@ -5,14 +5,15 @@ data "archive_file" "api_lambda" {
 }
 
 module "lambda_function" {
-  source                            = "terraform-aws-modules/lambda/aws"
-  version                           = "7.17.0"
-  function_name                     = "${lower(var.app)}_${lower(var.env)}"
-  description                       = "ListPal API endpoint"
-  handler                           = "handler.handler"
-  runtime                           = "nodejs20.x"
-  create_package                    = false
-  local_existing_package            = "${path.module}/../src.zip"
+  source         = "terraform-aws-modules/lambda/aws"
+  version        = "7.17.0"
+  function_name  = "${lower(var.app)}_${lower(var.env)}"
+  description    = "ListPal API endpoint"
+  handler        = "handler.handler"
+  runtime        = "nodejs20.x"
+  create_package = false
+  # Referencing the data source builds the zip first. A plain path is hashed before the zip exists on a fresh checkout, so CI would miss code changes.
+  local_existing_package            = data.archive_file.api_lambda.output_path
   cloudwatch_logs_retention_in_days = 1
   publish                           = true
   attach_policy_json                = true
