@@ -563,7 +563,8 @@ Getting a change onto `main` has its own skills: `/pr` (`.claude/skills/pr/SKILL
 How the code packaging works:
 
 - `data "archive_file" "api_lambda"` zips the whole of `src/` (including `node_modules`) to `src.zip` in the repo root. CI installs `node_modules` from the committed `src/yarn.lock`.
-- The Lambdas use `create_package = false` and `local_existing_package = ../src.zip`. They run the same artefact and differ only by `handler`.
+- The Lambdas use `create_package = false` and `local_existing_package = data.archive_file.api_lambda.output_path`. They run the same artefact and differ only by `handler`. Referencing the data source makes Terraform write the zip before the modules hash it. With a plain path, a fresh checkout hashed a missing file, and the plan showed no code change.
+- The zip is reproducible: two fresh checkouts give the same hash, so CI redeploys the Lambdas only when `src/` changes.
 - Because the zip contains everything, a change to any file in `src/`, `.gitignore` included, redeploys every function.
 - A zip built on a laptop differs from CI's (`node_modules/.yarn-integrity` records the install flags), so a laptop apply redeploys the Lambdas even with no code change.
 
