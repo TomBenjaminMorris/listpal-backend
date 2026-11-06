@@ -286,10 +286,10 @@ test("GET /user reads consistently, as the frontend reads it straight after POST
   assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead, true);
 });
 
-test("GET /user returns the reword tone with the theme", async () => {
+test("GET /user returns the reword tone and AI setting with the theme", async () => {
   await request("GET /user");
 
-  assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression, "Theme, RewordTone");
+  assert.equal(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression, "Theme, RewordTone, AIEnabled");
 });
 
 test("POST /user-reword-tone saves the tone on the caller's user item", async () => {
@@ -306,6 +306,27 @@ test("POST /user-reword-tone saves the tone on the caller's user item", async ()
 for (const [name, body] of [["no body", undefined], ["an unknown tone", { tone: "sarcastic" }], ["the dropped playful tone", { tone: "playful" }], ["an inherited property name", { tone: "constructor" }], ["a tone that isn't a string", { tone: 3 }]]) {
   test(`POST /user-reword-tone with ${name} is a 400 with nothing written`, async () => {
     const response = await request("POST /user-reword-tone", { body });
+    assert.equal(response.statusCode, 400);
+    assert.equal(mock.commandCalls(UpdateItemCommand).length, 0);
+  });
+}
+
+for (const enabled of [false, true]) {
+  test(`POST /user-ai-enabled saves ${enabled} on the caller's user item`, async () => {
+    mock.on(UpdateItemCommand).resolves({});
+
+    const response = await request("POST /user-ai-enabled", { body: { enabled } });
+
+    assert.equal(response.statusCode, undefined);
+    const [{ args: [{ input }] }] = mock.commandCalls(UpdateItemCommand);
+    assert.deepEqual(input.Key, { PK: { S: "u#user" }, SK: { S: "u#user" } });
+    assert.deepEqual(setFields(input), { AIEnabled: { BOOL: enabled } });
+  });
+}
+
+for (const [name, body] of [["no body", undefined], ["no value", {}], ["a string", { enabled: "false" }], ["a number", { enabled: 0 }], ["null", { enabled: null }]]) {
+  test(`POST /user-ai-enabled with ${name} is a 400 with nothing written`, async () => {
+    const response = await request("POST /user-ai-enabled", { body });
     assert.equal(response.statusCode, 400);
     assert.equal(mock.commandCalls(UpdateItemCommand).length, 0);
   });

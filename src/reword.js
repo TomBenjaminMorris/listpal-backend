@@ -5,6 +5,7 @@ const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { jwtDecode } = require("jwt-decode");
 const { DEFAULT_REWORD_TONE, EXAMPLE_TASKS, REWORD_TONES } = require("./reword_tones");
 const { respond } = require("./respond");
+const { userAllowsAI } = require("./ai_features");
 const dynamo = new DynamoDBClient();
 const ssm = new SSMClient();
 const tableName = "ListPal-" + process.env.Env;
@@ -262,6 +263,10 @@ module.exports.handler = async (event) => {
     }
 
     const userID = `u#${jwtDecode(event.headers.authorization).sub}`;
+    // Before the quota, so an opted-out user's request costs nothing and their text never leaves AWS
+    if (!(await userAllowsAI(dynamo, tableName, userID))) {
+      return respond(403, { error: "ai_disabled" });
+    }
     // Spent before the OpenAI call and not refunded if it fails, which keeps a failing call from being retried for free
     await spendQuota(userID);
     const text = await rewordTask(await getApiKey(), body, userID);
