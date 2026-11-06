@@ -1,15 +1,8 @@
-resource "aws_ssm_parameter" "openai_key" {
-  name        = "/${lower(var.app)}/${lower(var.env)}/openai-api-key"
-  description = "OpenAI API key for task rewording"
-  type        = "SecureString"
-  # The real key is set by hand with `aws ssm put-parameter --overwrite`, so it never enters the repo. Refreshes still copy it into state.
-  value = "set-by-hand"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-
-  tags = local.tags
+# The parameter is created by hand, not by Terraform: a managed SecureString, or a data source reading one,
+# has its decrypted value copied into state on every refresh, whatever ignore_changes says
+locals {
+  openai_key_parameter     = "/${lower(var.app)}/${lower(var.env)}/openai-api-key"
+  openai_key_parameter_arn = "arn:aws:ssm:eu-west-2:${data.aws_caller_identity.current.account_id}:parameter${local.openai_key_parameter}"
 }
 
 # A function of its own so only this role can read the OpenAI key, not the main API's
@@ -33,7 +26,7 @@ module "reword_lambda_function" {
             {
                 "Effect": "Allow",
                 "Action": "ssm:GetParameter",
-                "Resource": "${aws_ssm_parameter.openai_key.arn}"
+                "Resource": "${local.openai_key_parameter_arn}"
             },
             {
                 "Effect": "Allow",
@@ -50,7 +43,7 @@ module "reword_lambda_function" {
 
   environment_variables = {
     Env                = var.env
-    OpenAIKeyParameter = aws_ssm_parameter.openai_key.name
+    OpenAIKeyParameter = local.openai_key_parameter
   }
 
   allowed_triggers = {
