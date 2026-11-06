@@ -3,7 +3,7 @@
   "private": true,
   "description": "Kept out of src/ so test-only packages never reach the Lambda zip",
   "scripts": {
-    "test": "NODE_PATH=./node_modules:../src/node_modules node --test ."
+    "test": "NODE_PATH=./node_modules:../src/node_modules node --test"
   },
   "devDependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1156.0",
