@@ -6,7 +6,7 @@ This document is a condensed map of the `listpal-backend` repository. It is writ
 
 ListPal is a task and goal tracking app. Users have **boards**, boards contain **tasks** grouped by **category**, and completing tasks earns **scores** (weekly, monthly, yearly) measured against **targets**.
 
-The backend is fully serverless on AWS and defined in Terraform. It is deployed by hand from a laptop for now. The IAM roles that will let GitHub Actions deploy it instead are in place (section 8).
+The backend is fully serverless on AWS and defined in Terraform. GitHub Actions tests every PR and applies `main` on every merge (section 8).
 
 | Concern | Choice |
 | --- | --- |
@@ -29,6 +29,7 @@ listpal-backend/
 ├── ARCHITECTURE.md            This file
 ├── CLAUDE.md                  Working rules for AI assistants, including the documentation rules
 ├── .claude/skills/            AI assistant skills: pr (raise a PR), merge (raise and merge one)
+├── .github/workflows/         CI: tests and plan on PRs, tests and apply on merge (section 8)
 ├── src/                       All Lambda code (one shared package, one zip)
 │   ├── handler.js             API Lambda: every HTTP route
 │   ├── task_sync.js           Batch task and board settings sync (POST /sync), including score changes
@@ -514,7 +515,7 @@ flowchart TB
 
 Key points:
 
-- **State backend:** S3 bucket `tbm-tf-state-bucket` in `eu-west-1`, key `listpal-infra`. No DynamoDB lock table is configured, so concurrent applies are not protected.
+- **State backend:** S3 bucket `tbm-tf-state-bucket` in `eu-west-1`, key `listpal-infra`, with versioning on. No DynamoDB lock table is configured. CI applies queue behind each other through a workflow concurrency group, but nothing stops a laptop apply overlapping one.
 - **Providers:** AWS `eu-west-2` by default, plus alias `use1` (`us-east-1`) because Cognito custom domains need a certificate in that region. Also requires `random`, `local`, `null`. The `archive` provider is used implicitly by `data "archive_file"`.
 - **Terraform version:** `.tool-versions` pins 1.3.0 (`required_version >= 1.3`). AWS provider `>= 5.21`.
 - **Community modules:** `terraform-aws-modules/lambda/aws` pinned exactly (7.17.0 for the API and score reset Lambdas, 7.21.1 for reword), `apigateway-v2/aws 5.0.0`, `dynamodb-table/aws 4.0.0`. The pins and the committed lock file matter because a fresh `init` with newer versions plans a bogus IAM rewrite, and every CI run is a fresh `init`.
@@ -533,40 +534,51 @@ Key points:
 
 ## 8. Deployment
 
-There is no pipeline. Deployment is `terraform apply` from a machine with AWS credentials for the target account.
+GitHub Actions deploys `main`. Merging a PR is the approval: there is no manual gate. The workflows are in `.github/workflows/`:
 
-Getting a change onto `main` comes first and has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it. Neither one deploys anything.
+- `test-and-plan.yml` runs on every pull request. It runs the tests, then `terraform fmt -check`, `validate` and `plan` as `listpal-backend-plan`. The plan job is skipped for PRs from forks, which get no AWS token.
+- `deploy.yml` runs on every push to `main`. It runs the tests, then `plan -out` and `apply` of that saved plan as `listpal-backend-apply`. The concurrency group `terraform-apply` queues applies, so they never overlap.
+- `tests.yml` is the reusable test job both call. It runs `test/` and `test-data/` with no AWS credentials.
 
 ```mermaid
 flowchart LR
-    A["Edit src/*.js<br/>or terraform/*.tf"] --> B["cd src && yarn install<br/>(production deps)"]
-    B --> C["cd ../terraform<br/>terraform init"]
-    C --> D["terraform plan"]
-    D --> E["terraform apply"]
-    E --> F["archive_file zips src/ to src.zip"]
-    F --> G["Lambda modules upload src.zip<br/>to both functions"]
-    E --> H["Infra changes applied"]
-    G --> I["One-off manual steps if first deploy"]
-    H --> I
+    PR["Pull request"] --> T1["Tests<br/>(no AWS access)"]
+    T1 --> P["terraform plan<br/>listpal-backend-plan"]
+    M["Merge to main"] --> T2["Tests<br/>(no AWS access)"]
+    T2 --> AP["terraform plan -out<br/>then apply<br/>listpal-backend-apply"]
+    AP --> L["Lambdas, API, IAM<br/>and the rest updated"]
 ```
 
-### Standard code or infra change
+Rules the workflows follow, because the repo and its Actions logs are public:
 
-```sh
-cd src
-yarn install            # node_modules is gitignored but must exist, it goes into the zip
-cd ../terraform
-terraform init          # first time, or after changing providers or modules
-terraform plan
-terraform apply
-```
+- Each workflow starts from `permissions: {}`, and only the Terraform job gets `id-token: write`.
+- Every action is pinned to a full commit SHA, with its version in a comment.
+- Checkouts use `persist-credentials: false`.
+- Dependencies are installed with `--frozen-lockfile` and `--ignore-scripts` wherever AWS credentials are present.
+- The plan is never posted to the PR or uploaded as an artifact, as it contains state values. `alert_email` comes from the `TF_VAR_alert_email` Actions secret and is `sensitive`.
+- Never add a `pull_request_target`, `issue_comment` or `workflow_run` workflow. Any workflow running on `main` can assume the apply role.
+
+Getting a change onto `main` has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it, which now deploys it.
 
 How the code packaging works:
 
-- `data "archive_file" "api_lambda"` zips the whole of `src/` (including `node_modules`) to `src.zip` in the repo root.
-- Both Lambdas use `create_package = false` and `local_existing_package = ../src.zip`. They run the same artefact and differ only by `handler` (`handler.handler` and `score_reset.handler`).
-- Because the zip contains everything, a change to any file in `src/` redeploys both functions.
-- If a code change does not appear to deploy, check that `src.zip` was regenerated during the plan. The Lambda modules take the zip path as a plain string, so there is no explicit dependency on the `archive_file` resource.
+- `data "archive_file" "api_lambda"` zips the whole of `src/` (including `node_modules`) to `src.zip` in the repo root. CI installs `node_modules` from the committed `src/yarn.lock`.
+- The Lambdas use `create_package = false` and `local_existing_package = ../src.zip`. They run the same artefact and differ only by `handler`.
+- Because the zip contains everything, a change to any file in `src/`, `.gitignore` included, redeploys every function.
+- A zip built on a laptop differs from CI's (`node_modules/.yarn-integrity` records the install flags), so a laptop apply redeploys the Lambdas even with no code change.
+
+### By hand (fallback)
+
+Only when CI can't run, and never while a CI apply is running, because the state has no lock:
+
+```sh
+cd src
+yarn install --frozen-lockfile --production
+cd ../terraform
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+```
 
 ### First-time deployment extras
 
@@ -579,7 +591,7 @@ How the code packaging works:
      --name /listpal/dev/openai-api-key --type SecureString --value "$KEY"; unset KEY
    ```
    The same command replaces the key later. Never bring the parameter back into Terraform, as a resource or a data source, or the key returns to the state file. The key belongs to a dedicated OpenAI project whose model allow-list holds only `gpt-5-nano` and `omni-moderation-latest`. The key should have only Responses (Write) and Moderations (Request); create a new key to change its permissions, as edits to an existing key didn't take effect. The project is paid by prepaid credits with auto-recharge off, which is the hard ceiling on spend.
-5. **Alerts:** create `terraform/terraform.tfvars` holding `alert_email = "..."` before the first plan. After the apply, AWS emails that address a link to confirm the SNS subscription, and error alarms send nothing until it is clicked. Budget emails need no confirmation.
+5. **Alerts:** set the `TF_VAR_alert_email` Actions secret for CI, and create `terraform/terraform.tfvars` holding `alert_email = "..."` for local plans. After the apply, AWS emails that address a link to confirm the SNS subscription, and error alarms send nothing until it is clicked. Budget emails need no confirmation.
 6. **Seed data (optional):** `terraform/config/db_import.json` or an export from `test-data/` can be loaded with the importer.
 
 ### GitHub Actions access
@@ -748,3 +760,4 @@ These are things a reader should know before changing the system. They are not f
 | Change error alarms, the cost budget or where alerts go | `terraform/monitoring.tf`, and `alert_email` in the gitignored `terraform/terraform.tfvars` |
 | Back up or restore data | `test-data/` (section 9) |
 | Change what GitHub Actions may do in AWS | `terraform/github_actions.tf` (section 8) |
+| Change the CI tests, plan or deploy | `.github/workflows/` (section 8) |

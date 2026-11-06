@@ -5,7 +5,7 @@ description: Raise a pull request for the current ListPal backend work and leave
 
 # Raise a backend PR
 
-The user types "PR" when the work is ready for a pull request. That one word authorises committing, pushing and opening the PR. It stops there: don't merge, and don't run `terraform apply`.
+The user types "PR" when the work is ready for a pull request. That one word authorises committing, pushing and opening the PR. It stops there: don't merge, as merging deploys, and never run `terraform apply` by hand.
 
 The `merge` skill follows these same steps before it merges.
 
@@ -68,7 +68,7 @@ The problem or goal, including which client or job needed it.
 What was actually run and the result, and what was not tested, such as behaviour only checked with mocks rather than the real Dev tables.
 
 ## Deploy and follow-ups
-Whether it needs `terraform apply`, any order it depends on with a frontend PR (link it), and any known gaps.
+What merging will deploy, from the local or CI plan, any order it depends on with a frontend PR (link it), and any known gaps.
 ```
 
 End with the attribution lines the session specifies, if any. Keep to observed facts: don't claim a test ran unless it did. Leave out session details such as "as discussed", and anything personal or secret.

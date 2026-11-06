@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No AWS access here, so nothing a dependency runs can reach the account
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+
+      # The tests load the Lambda's own dependencies from src/node_modules
+      - name: Install Lambda dependencies
+        working-directory: src
+        run: yarn install --frozen-lockfile --production --ignore-scripts
+
+      - name: Lambda tests
+        working-directory: test
+        run: yarn install --frozen-lockfile --ignore-scripts && yarn test
+
+      - name: Backup script tests
+        working-directory: test-data
+        run: npm ci --ignore-scripts && npm test

@@ -5,7 +5,7 @@ description: Raise a pull request for the current ListPal backend work and merge
 
 # Raise and merge a backend PR
 
-The user types "Merge" when the work is finished. That one word authorises committing, pushing, opening the PR and merging it. Merging does not release anything: production only changes through `terraform apply`, which stays a separate decision the user makes each time.
+The user types "Merge" when the work is finished. That one word authorises committing, pushing, opening the PR and merging it. Merging also releases it: the Deploy workflow (`.github/workflows/deploy.yml`) applies `main` straight after, with no approval step. So check what the PR's plan will do before merging, and never run `terraform apply` by hand.
 
 ## Steps
 
@@ -19,7 +19,19 @@ If there is nothing to merge at all, say so and stop.
 
 A failed check doesn't stop a PR, but it does stop a merge. If a check failed because of this work, leave the PR open and report the failure. "Force merge" carries on regardless and records the failure in the force merge comment.
 
-### 3. Merge
+### 3. Check the plan
+
+Wait for the PR's checks, then read the plan summary from its `Terraform plan` job:
+
+```sh
+gh pr checks <number> --watch
+RUN=$(gh run list --workflow test-and-plan.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run view "$RUN" --log | grep -E 'Plan:|No changes|will be destroyed|must be replaced'
+```
+
+Replacements of `aws_lambda_permission` resources are normal whenever `src/` changes, because each publish makes a new Lambda version. Any other destroy or replacement, or a change the PR doesn't explain, stops the merge, even for "Force merge". Report it and let the user decide, because merging applies it.
+
+### 4. Merge
 
 Before merging a PR that has another PR based on its branch, retarget the upper PR to `main` with `gh pr edit <upper> --base main`. Otherwise deleting the branch closes the upper PR for good.
 
@@ -56,7 +68,7 @@ gh pr comment <number> --body "Force merged: <what was bypassed and why>."
 
 If a tool call for the merge is denied, stop and tell the user. A denial is a decision, so don't try another route.
 
-### 4. Confirm
+### 5. Confirm and watch the deploy
 
 ```sh
 gh pr view <number> --json state,mergedAt,mergeCommit
@@ -66,4 +78,13 @@ git branch --show-current
 
 Only report success if the state is `MERGED`. `gh` normally leaves the checkout on an up-to-date `main`. If it doesn't, say so, and don't discard or stash the user's edits to fix it.
 
-Report the PR link, the merge commit, anything left uncommitted, whether it was forced, and whether the change still needs a `terraform apply`. Don't run the apply.
+Then watch the deploy that the merge started:
+
+```sh
+RUN=$(gh run list --workflow deploy.yml --branch main --limit 1 --json databaseId,headSha --jq '.[0].databaseId')
+gh run watch "$RUN" --exit-status
+```
+
+Check that the run's `headSha` is the merge commit. If the run fails, show the failing step from `gh run view "$RUN" --log-failed` and stop. Don't apply by hand to fix it.
+
+Report the PR link, the merge commit, anything left uncommitted, whether it was forced, and the deploy result (the `Apply complete!` line, or the failure).
