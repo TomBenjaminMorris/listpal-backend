@@ -10,7 +10,7 @@ The backend is fully serverless on AWS and defined in Terraform. GitHub Actions 
 
 | Concern | Choice |
 | --- | --- |
-| Compute | AWS Lambda, Node.js 24 (CommonJS). Handlers must be `async`, as the Node.js 24 runtime drops callback-style handlers |
+| Compute | AWS Lambda, Node.js 22 (CommonJS). Keep handlers `async`: Node.js 24, the next runtime, drops callback-style handlers |
 | API | API Gateway v2 (HTTP API): one Lambda for most routes, a separate one for `POST /reword-task` |
 | AI | OpenAI Responses API (`gpt-5-nano`) behind the moderation endpoint, key in SSM Parameter Store, used only to reword a task |
 | Auth | Cognito user pool, JWT authoriser, OAuth code flow with a custom domain |
@@ -40,7 +40,7 @@ listpal-backend/
 │   ├── reword_tones.js        The reword tones and their prompt wording, also used to check POST /user-reword-tone
 │   ├── respond.js             The error response shape both HTTP Lambdas return
 │   ├── package.json / yarn.lock
-│   └── .tool-versions         nodejs 24.22.2, matching the Lambda runtime
+│   └── .tool-versions         nodejs 22.23.4, matching the Lambda runtime
 ├── src.zip                    Build artefact written by Terraform (gitignored)
 ├── terraform/                 All infrastructure
 │   ├── versions.tf            S3 backend and provider constraints
@@ -83,7 +83,7 @@ flowchart LR
         APIGW["API Gateway HTTP API<br/>api.vinsp.in<br/>JWT authoriser"]
     end
 
-    subgraph Compute["Lambda (nodejs24.x, one zip)"]
+    subgraph Compute["Lambda (nodejs22.x, one zip)"]
         L1["listpal_dev<br/>handler.handler<br/>1024 MB, 15 s timeout"]
         L2["listpal_score_reset_dev<br/>score_reset.handler"]
         L3["listpal_reword_dev<br/>reword.handler<br/>256 MB, 10 s timeout"]
@@ -517,7 +517,8 @@ Key points:
 
 - **State backend:** S3 bucket `tbm-tf-state-bucket` in `eu-west-1`, key `listpal-infra`, with versioning on. No DynamoDB lock table is configured. CI applies queue behind each other through a workflow concurrency group, but nothing stops a laptop apply overlapping one.
 - **Providers:** AWS `eu-west-2` by default, plus alias `use1` (`us-east-1`) because Cognito custom domains need a certificate in that region. Also requires `random`, `local`, `null`. The `archive` provider is used implicitly by `data "archive_file"`.
-- **Terraform version:** `.tool-versions` pins 1.3.0 (`required_version >= 1.3`). AWS provider `>= 5.21`.
+- **Terraform version:** `.tool-versions` pins 1.3.0 (`required_version >= 1.3`). AWS provider `>= 5.21`, locked at 5.81.0.
+- **Node runtime:** `nodejs22.x` is deprecated on 30 April 2027, and function updates are blocked from 31 August 2027. The next runtime, `nodejs24.x` (supported until April 2028), needs AWS provider 6.21.0 or later, as 5.81.0 rejects the name at plan time. `terraform validate` doesn't catch it, because the runtime is passed into a module. That upgrade is a provider major version and likely new module versions, so it gets its own PR.
 - **Community modules:** `terraform-aws-modules/lambda/aws` pinned exactly (7.17.0 for the API and score reset Lambdas, 7.21.1 for reword), `apigateway-v2/aws 5.0.0`, `dynamodb-table/aws 4.0.0`. The pins and the committed lock file matter because a fresh `init` with newer versions plans a bogus IAM rewrite, and every CI run is a fresh `init`.
 - **Domains:** The API is served at `api.vinsp.in` (module `domain_name = "*.vinsp.in"`, `subdomains = ["api"]`). The Cognito managed login is at `auth.listpal.dev.vinsp.in`. The Route 53 hosted zone `vinsp.in` must already exist.
 - **Naming:** `${app}-${env}` for tables, pool and API; `${lower(app)}_${lower(env)}` for Lambdas. Changing `env` creates a parallel stack, but the domains and callback URLs are hard-coded to the `dev` setup, so a second environment needs those parameterising first.
@@ -557,7 +558,7 @@ Rules the workflows follow, because the repo and its Actions logs are public:
 - Dependencies are installed with `--frozen-lockfile` and `--ignore-scripts` wherever AWS credentials are present.
 - The plan is never posted to the PR or uploaded as an artifact, as it contains state values. `alert_email` comes from the `TF_VAR_alert_email` Actions secret and is `sensitive`.
 - Never add a `pull_request_target`, `issue_comment` or `workflow_run` workflow. Any workflow running on `main` can assume the apply role.
-- CI runs Node 24, the same as the Lambda runtime (`nodejs24.x`, supported until April 2028).
+- CI runs Node 22, the same as the Lambda runtime (`nodejs22.x`).
 
 `main` is protected: a PR can't merge until `tests / Unit tests` and `Terraform plan` pass. Admins can still bypass with `gh pr merge --admin`, which the `/merge` skill uses only for "Force merge". No review is required. The rule was set with `gh api -X PUT repos/TomBenjaminMorris/listpal-backend/branches/main/protection`, not Terraform, and a renamed CI job needs its check name updated there.
 

@@ -10,7 +10,7 @@ module "lambda_function" {
   function_name  = "${lower(var.app)}_${lower(var.env)}"
   description    = "ListPal API endpoint"
   handler        = "handler.handler"
-  runtime        = "nodejs24.x"
+  runtime        = "nodejs22.x"
   create_package = false
   # Referencing the data source builds the zip first. A plain path is hashed before the zip exists on a fresh checkout, so CI would miss code changes.
   local_existing_package            = data.archive_file.api_lambda.output_path

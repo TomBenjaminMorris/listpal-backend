@@ -12,7 +12,7 @@ module "reword_lambda_function" {
   function_name                     = "${lower(var.app)}_reword_${lower(var.env)}"
   description                       = "ListPal task reword (OpenAI)"
   handler                           = "reword.handler"
-  runtime                           = "nodejs24.x"
+  runtime                           = "nodejs22.x"
   create_package                    = false
   local_existing_package            = data.archive_file.api_lambda.output_path
   cloudwatch_logs_retention_in_days = 1
