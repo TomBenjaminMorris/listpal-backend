@@ -14,7 +14,7 @@ module "reword_lambda_function" {
   handler                           = "reword.handler"
   runtime                           = "nodejs20.x"
   create_package                    = false
-  local_existing_package            = "${path.module}/../src.zip"
+  local_existing_package            = data.archive_file.api_lambda.output_path
   cloudwatch_logs_retention_in_days = 1
   publish                           = true
   attach_policy_json                = true
