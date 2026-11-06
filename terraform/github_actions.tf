@@ -105,25 +105,34 @@ resource "aws_iam_role_policy" "backend_plan" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Refreshing the SecureString parameter decrypts it
-        Effect    = "Allow"
-        Action    = "kms:Decrypt"
-        Resource  = "*"
-        Condition = { StringEquals = { "kms:ViaService" = "ssm.eu-west-2.amazonaws.com" } }
-      },
-      {
-        # A plan never needs user data, which ReadOnlyAccess would otherwise expose
+        # A plan never needs user data or logged requests, which ReadOnlyAccess would otherwise expose to any PR branch
         Effect = "Deny"
         Action = [
           "dynamodb:GetItem",
-          "dynamodb:BatchGetItem",
+          "dynamodb:BatchGet*",
           "dynamodb:Query",
           "dynamodb:Scan",
+          "dynamodb:PartiQL*",
+          "dynamodb:Export*",
           "dynamodb:GetRecords",
-          "cognito-idp:ListUsers",
-          "cognito-idp:AdminGetUser",
+          "dynamodb:ReadDataForReplication",
+          "cognito-idp:ListUsers*",
+          "cognito-idp:AdminGet*",
+          "cognito-idp:AdminList*",
+          "logs:GetLogEvents",
+          "logs:GetLogRecord",
+          "logs:FilterLogEvents",
+          "logs:StartQuery",
+          "logs:GetQueryResults",
+          "logs:StartLiveTail",
         ]
         Resource = "*"
+      },
+      {
+        # The plan reads only its own state. This keeps it out of other projects' states and any other bucket.
+        Effect      = "Deny"
+        Action      = "s3:GetObject*"
+        NotResource = "arn:aws:s3:::tbm-tf-state-bucket/listpal-infra"
       },
     ]
   })

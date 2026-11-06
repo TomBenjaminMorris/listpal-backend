@@ -599,7 +599,7 @@ flowchart LR
 
 - **listpal-frontend-deploy** can list and put objects in `www.listpal.dev.vinsp.in` and create invalidations on distribution `E1AKHSV400BS9K`, nothing else. It has no delete, so old bundles stay for visitors still holding a cached `index.html`. The site lives in the frontend repo's own Terraform state, so the bucket and distribution ID are written into `locals` rather than referenced.
 - **listpal-backend-apply** has `AdministratorAccess`. Terraform here creates IAM roles, so a narrower policy would still be admin in practice. The trust on `main` is the real boundary.
-- **listpal-backend-plan** has `ReadOnlyAccess`, plus `kms:Decrypt` through SSM so the plan can refresh the OpenAI key parameter. An explicit deny stops it reading table items or listing Cognito users, which a plan never needs.
+- **listpal-backend-plan** has `ReadOnlyAccess`, minus anything a plan never needs that would expose data to a PR branch. Explicit denies cover reading table items (including PartiQL and exports), listing or getting Cognito users, reading log events, and reading any S3 object other than its own `listpal-infra` state, so it can't read other projects' states. It needs no KMS statement, since the `aws/ssm` key policy already allows decryption through SSM within the account.
 - The roles had to be created by one `terraform apply` from a laptop, since CI can't create the role it signs in with. The apply role can change its own trust, which is accepted for a one-person project.
 
 ### Outputs
