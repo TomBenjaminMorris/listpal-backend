@@ -29,6 +29,7 @@ listpal-backend/
 ├── ARCHITECTURE.md            This file
 ├── CLAUDE.md                  Working rules for AI assistants, including the documentation rules
 ├── .claude/skills/            AI assistant skills: pr (raise a PR), merge (raise and merge one)
+├── .claude/agents/            AI reviewers the pr skill runs when a change needs them: security, performance and bugs, complexity
 ├── .github/workflows/         CI: tests and plan on PRs, tests and apply on merge (section 8)
 ├── src/                       All Lambda code (one shared package, one zip)
 │   ├── handler.js             API Lambda: every HTTP route
@@ -575,7 +576,7 @@ Rules the workflows follow, because the repo and its Actions logs are public:
 
 `main` is protected: a PR can't merge until `tests / Unit tests` and `Terraform plan` pass. Admins can still bypass with `gh pr merge --admin`, which the `/merge` skill uses only for "Force merge". No review is required. The rule was set with `gh api -X PUT repos/TomBenjaminMorris/listpal-backend/branches/main/protection`, not Terraform, and a renamed CI job needs its check name updated there.
 
-Getting a change onto `main` has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it, which now deploys it.
+Getting a change onto `main` has its own skills: `/pr` (`.claude/skills/pr/SKILL.md`) raises a PR with a description written for later auditing and leaves it open, and `/merge` (`.claude/skills/merge/SKILL.md`) does the same and merges it, which now deploys it. Before committing, `/pr` runs whichever of the reviewer agents in `.claude/agents/` (security, performance and bugs, complexity) the diff calls for, and an open high finding stops a merge.
 
 How the code packaging works:
 

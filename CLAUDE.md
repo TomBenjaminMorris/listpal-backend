@@ -29,3 +29,7 @@
 ## Keep ARCHITECTURE.md up to date
 
 Before creating a PR, check that `ARCHITECTURE.md` reflects all the changes on the branch, and update it if it does not.
+
+## Specialist reviewers
+
+`.claude/agents/` holds three read-only reviewers: `security-reviewer`, `performance-reviewer` (bugs and speed) and `complexity-reviewer` (maintainability). Don't run them during ordinary work. The `pr` skill decides which ones a change needs before it is committed, and the user can ask for any of them at any time, for a diff or the whole repo.
