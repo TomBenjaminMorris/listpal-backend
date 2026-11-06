@@ -52,7 +52,7 @@ resource "aws_lambda_permission" "allow_cloudwatch_to_call_split_lambda" {
 
 module "lambda_function_reset" {
   source  = "terraform-aws-modules/lambda/aws"
-  version = "~> 7.0"
+  version = "7.17.0"
 
   function_name                     = "${lower(var.app)}_score_reset_${lower(var.env)}"
   description                       = "ListPal Score Reset"

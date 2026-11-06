@@ -24,5 +24,6 @@ variable "root_domain_zone" {
 
 variable "alert_email" {
   type        = string
-  description = "Where cost and error alerts are emailed. Set in the gitignored terraform.tfvars, as the repo is public."
+  description = "Where cost and error alerts are emailed. Set in the gitignored terraform.tfvars locally and the TF_VAR_alert_email secret in CI, as the repo and its Actions logs are public."
+  sensitive   = true
 }
